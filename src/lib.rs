@@ -25,27 +25,32 @@
 //!
 //! # PASERK Types
 //!
-//! PASERK defines several key types:
+//! All PASERK key types are implemented for K2/K4 (Sodium) versions:
 //!
-//! | Type | Format | Description |
-//! |------|--------|-------------|
-//! | `local` | `k{v}.local.{data}` | Symmetric encryption key |
-//! | `public` | `k{v}.public.{data}` | Public verification key |
-//! | `secret` | `k{v}.secret.{data}` | Secret signing key |
-//! | `lid` | `k{v}.lid.{data}` | Local key identifier |
-//! | `pid` | `k{v}.pid.{data}` | Public key identifier |
-//! | `sid` | `k{v}.sid.{data}` | Secret key identifier |
-//! | `local-wrap` | `k{v}.local-wrap.{protocol}.{data}` | Wrapped symmetric key |
-//! | `secret-wrap` | `k{v}.secret-wrap.{protocol}.{data}` | Wrapped secret key |
+//! | Type | Format | Description | Status |
+//! |------|--------|-------------|--------|
+//! | `local` | `k{v}.local.{data}` | Symmetric encryption key | ✅ K2/K4 |
+//! | `public` | `k{v}.public.{data}` | Public verification key | ✅ K2/K4 |
+//! | `secret` | `k{v}.secret.{data}` | Secret signing key | ✅ K2/K4 |
+//! | `lid` | `k{v}.lid.{data}` | Local key identifier | ✅ K2/K4 |
+//! | `pid` | `k{v}.pid.{data}` | Public key identifier | ✅ K2/K4 |
+//! | `sid` | `k{v}.sid.{data}` | Secret key identifier | ✅ K2/K4 |
+//! | `local-wrap` | `k{v}.local-wrap.pie.{data}` | PIE-wrapped symmetric key | ✅ K2/K4 |
+//! | `secret-wrap` | `k{v}.secret-wrap.pie.{data}` | PIE-wrapped secret key | ✅ K2/K4 |
+//! | `local-pw` | `k{v}.local-pw.{data}` | Password-wrapped symmetric key | ✅ K2/K4 |
+//! | `secret-pw` | `k{v}.secret-pw.{data}` | Password-wrapped secret key | ✅ K2/K4 |
+//! | `seal` | `k{v}.seal.{data}` | PKE-encrypted symmetric key | ✅ K2/K4 |
 //!
 //! # Versions
 //!
 //! PASERK supports four versions, corresponding to PASETO versions:
 //!
-//! - **K1**: NIST Original (RSA + SHA-384)
-//! - **K2**: Sodium Original (Ed25519 + BLAKE2b)
-//! - **K3**: NIST Modern (P-384 + SHA-384)
-//! - **K4**: Sodium Modern (Ed25519 + BLAKE2b) - **Recommended**
+//! | Version | Algorithms | Status |
+//! |---------|------------|--------|
+//! | **K1** | RSA + AES-CTR + HMAC-SHA384 | ⏳ Not yet implemented |
+//! | **K2** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented |
+//! | **K3** | P-384 + AES-CTR + HMAC-SHA384 | ⏳ Not yet implemented |
+//! | **K4** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented (Recommended) |
 //!
 //! # Features
 //!
@@ -53,10 +58,28 @@
 //!
 //! ```toml
 //! [dependencies]
-//! paserk = { version = "0.1", features = ["k4"] }  # K4 only (default)
+//! paserk = { version = "0.1", features = ["k4"] }  # K4 only (default, recommended)
 //! paserk = { version = "0.1", features = ["k2", "k4"] }  # K2 and K4
-//! paserk = { version = "0.1", features = ["all-versions"] }  # All versions
 //! ```
+//!
+//! **Note:** K1 and K3 features are defined but not yet implemented. Using them
+//! will compile but operations will not be available until implementation is complete.
+//!
+//! # Cryptographic Operations
+//!
+//! ## Key Wrapping (PIE Protocol)
+//! - XChaCha20 for encryption
+//! - BLAKE2b for key derivation and authentication
+//!
+//! ## Password-Based Key Wrapping (PBKW)
+//! - Argon2id for key derivation with configurable parameters
+//! - XChaCha20 for encryption
+//! - BLAKE2b for authentication
+//!
+//! ## Public Key Encryption (Seal)
+//! - X25519 ECDH for key exchange
+//! - BLAKE2b for key derivation
+//! - XChaCha20 for encryption
 //!
 //! # Security
 //!
@@ -65,7 +88,8 @@
 //! - Key material is zeroized on drop
 //! - Debug output redacts sensitive key material
 //! - Constant-time comparison for secret keys
-//! - No unsafe code
+//! - No unsafe code (`#![forbid(unsafe_code)]`)
+//! - Authenticated encryption prevents tampering
 //!
 //! # Modules
 //!

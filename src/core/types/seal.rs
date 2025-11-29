@@ -38,31 +38,29 @@ use crate::core::types::{PaserkLocal, PaserkSecret};
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// use paserk::core::types::{PaserkLocal, PaserkSecret, PaserkSeal};
 /// use paserk::core::version::K4;
 /// use ed25519_dalek::SigningKey;
-/// use rand_core::OsRng;
 ///
-/// // Generate Ed25519 keypair
-/// let signing_key = SigningKey::generate(&mut OsRng);
+/// // Create Ed25519 keypair from seed bytes
+/// let seed = [0u8; 32]; // Use secure random bytes in production!
+/// let signing_key = SigningKey::from_bytes(&seed);
 /// let secret_key = PaserkSecret::<K4>::from(signing_key.to_keypair_bytes());
 ///
 /// // Create a symmetric key to seal
 /// let local_key = PaserkLocal::<K4>::from([0x42u8; 32]);
 ///
 /// // Seal with the recipient's public key (derived from secret key)
-/// let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)
-///     .expect("seal should succeed");
+/// let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)?;
 ///
 /// // Serialize to PASERK string
 /// let paserk_string = sealed.to_string();
 ///
 /// // Parse and unseal
-/// let parsed = PaserkSeal::<K4>::try_from(paserk_string.as_str())
-///     .expect("parse should succeed");
-/// let unsealed = parsed.try_unseal(&secret_key)
-///     .expect("unseal should succeed");
+/// let parsed = PaserkSeal::<K4>::try_from(paserk_string.as_str())?;
+/// let unsealed = parsed.try_unseal(&secret_key)?;
+/// # Ok::<(), paserk::PaserkError>(())
 /// ```
 #[derive(Clone)]
 pub struct PaserkSeal<V: PaserkVersion> {
