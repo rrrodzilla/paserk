@@ -2,19 +2,84 @@
 name = "paserk"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.75.0"
 license = "MIT OR Apache-2.0"
-description = "Rust implementation of the PASERK specification (COMING SOON)"
+description = "Platform-Agnostic Serialized Keys (PASERK) for PASETO"
 homepage = "https://github.com/rrrodzilla/paserk"
 repository = "https://github.com/rrrodzilla/paserk"
+documentation = "https://docs.rs/paserk/latest/paserk/"
 authors = ["Roland Rodriguez <rrrodzilla@protonmail.com>"]
 keywords = ["paseto", "paserk", "security", "cryptography", "authentication"]
 categories = [
-  "encoding",
-  "web-programming",
-  "parsing",
-  "cryptography",
-  "authentication",
+    "cryptography",
+    "authentication",
+    "encoding",
+    "web-programming",
+    "parsing",
 ]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.docs.rs]
+features = ["k4", "prelude"]
+
+[features]
+default = ["k4"]
+
+# Version features - each enables the cryptographic primitives needed
+k1 = ["sha2", "hmac", "aes", "ctr", "pbkdf2"]
+k2 = ["blake2", "chacha20", "argon2", "x25519-dalek", "ed25519-dalek"]
+k3 = ["sha2", "hmac", "aes", "ctr", "pbkdf2", "p384"]
+k4 = ["blake2", "chacha20", "argon2", "x25519-dalek", "ed25519-dalek"]
+
+# Ergonomic layer
+prelude = []
+
+# For testing all versions
+all-versions = ["k1", "k2", "k3", "k4"]
+
+# Internal feature dependencies
+sha2 = ["dep:sha2"]
+hmac = ["dep:hmac"]
+aes = ["dep:aes"]
+ctr = ["dep:ctr"]
+pbkdf2 = ["dep:pbkdf2"]
+p384 = ["dep:p384"]
+blake2 = ["dep:blake2"]
+chacha20 = ["dep:chacha20"]
+argon2 = ["dep:argon2"]
+x25519-dalek = ["dep:x25519-dalek"]
+ed25519-dalek = ["dep:ed25519-dalek"]
 
 [dependencies]
+# Core (always required)
+base64 = "0.22"
+zeroize = { version = "1.8", features = ["zeroize_derive"] }
+thiserror = "2.0"
+subtle = "2.6"
+rand_core = "0.9"
+
+# K1/K3: NIST algorithms
+sha2 = { version = "0.10", optional = true }
+hmac = { version = "0.12", optional = true }
+aes = { version = "0.8", optional = true }
+ctr = { version = "0.9", optional = true }
+pbkdf2 = { version = "0.12", optional = true }
+p384 = { version = "0.13", optional = true }
+
+# K2/K4: Sodium algorithms
+blake2 = { version = "0.10", optional = true }
+chacha20 = { version = "0.9", optional = true }
+argon2 = { version = "0.5", optional = true }
+x25519-dalek = { version = "2.0", optional = true }
+ed25519-dalek = { version = "2.0", features = ["zeroize"], optional = true }
+
+[dev-dependencies]
+anyhow = "1.0"
+hex = "0.4"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
