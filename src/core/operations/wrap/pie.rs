@@ -315,74 +315,71 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pie_wrap_unwrap_local_k4_roundtrip() {
+    fn test_pie_wrap_unwrap_local_k4_roundtrip() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let plaintext_key = [0x13u8; 32];
         let header = "k4.local-wrap.pie.";
 
         let (nonce, ciphertext, tag) =
-            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
 
         // Ciphertext should be different from plaintext
         assert_ne!(ciphertext, plaintext_key);
 
         let unwrapped =
-            pie_unwrap_local_k2k4(&wrapping_key, &nonce, &ciphertext, &tag, header)
-                .expect("unwrap should succeed");
+            pie_unwrap_local_k2k4(&wrapping_key, &nonce, &ciphertext, &tag, header)?;
 
         assert_eq!(unwrapped, plaintext_key);
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pie_wrap_unwrap_secret_k4_roundtrip() {
+    fn test_pie_wrap_unwrap_secret_k4_roundtrip() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let plaintext_key = [0x13u8; 64];
         let header = "k4.secret-wrap.pie.";
 
         let (nonce, ciphertext, tag) =
-            pie_wrap_secret_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_secret_k2k4(&wrapping_key, &plaintext_key, header)?;
 
         // Ciphertext should be different from plaintext
         assert_ne!(ciphertext, plaintext_key);
 
         let unwrapped =
-            pie_unwrap_secret_k2k4(&wrapping_key, &nonce, &ciphertext, &tag, header)
-                .expect("unwrap should succeed");
+            pie_unwrap_secret_k2k4(&wrapping_key, &nonce, &ciphertext, &tag, header)?;
 
         assert_eq!(unwrapped, plaintext_key);
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pie_unwrap_local_wrong_key() {
+    fn test_pie_unwrap_local_wrong_key() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let wrong_key = [0x43u8; 32];
         let plaintext_key = [0x13u8; 32];
         let header = "k4.local-wrap.pie.";
 
         let (nonce, ciphertext, tag) =
-            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
 
         let result =
             pie_unwrap_local_k2k4(&wrong_key, &nonce, &ciphertext, &tag, header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pie_unwrap_local_modified_ciphertext() {
+    fn test_pie_unwrap_local_modified_ciphertext() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let plaintext_key = [0x13u8; 32];
         let header = "k4.local-wrap.pie.";
 
         let (nonce, mut ciphertext, tag) =
-            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
 
         // Modify ciphertext
         ciphertext[0] ^= 0xff;
@@ -391,18 +388,18 @@ mod tests {
             pie_unwrap_local_k2k4(&wrapping_key, &nonce, &ciphertext, &tag, header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pie_unwrap_local_modified_tag() {
+    fn test_pie_unwrap_local_modified_tag() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let plaintext_key = [0x13u8; 32];
         let header = "k4.local-wrap.pie.";
 
         let (nonce, ciphertext, mut tag) =
-            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
 
         // Modify tag
         tag[0] ^= 0xff;
@@ -411,41 +408,41 @@ mod tests {
             pie_unwrap_local_k2k4(&wrapping_key, &nonce, &ciphertext, &tag, header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pie_unwrap_local_wrong_header() {
+    fn test_pie_unwrap_local_wrong_header() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let plaintext_key = [0x13u8; 32];
         let header = "k4.local-wrap.pie.";
         let wrong_header = "k4.secret-wrap.pie.";
 
         let (nonce, ciphertext, tag) =
-            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
 
         let result =
             pie_unwrap_local_k2k4(&wrapping_key, &nonce, &ciphertext, &tag, wrong_header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pie_wrap_produces_different_nonces() {
+    fn test_pie_wrap_produces_different_nonces() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let plaintext_key = [0x13u8; 32];
         let header = "k4.local-wrap.pie.";
 
         let (nonce1, _, _) =
-            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
         let (nonce2, _, _) =
-            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)
-                .expect("wrap should succeed");
+            pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
 
         // Nonces should be different (probabilistically)
         assert_ne!(nonce1, nonce2);
+        Ok(())
     }
 }

@@ -42,7 +42,7 @@ mod tests {
 
     #[test]
     fn test_pie_default() {
-        let _pie: Pie = Pie::default();
+        let _pie: Pie = Pie;
     }
 
     #[test]

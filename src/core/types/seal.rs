@@ -355,17 +355,17 @@ mod tests {
     /// Helper function to generate a PaserkSecret for testing.
     /// Uses our rand_core 0.9 OsRng to avoid version conflicts.
     #[cfg(feature = "k4")]
-    fn generate_test_secret() -> PaserkSecret<K4> {
+    fn generate_test_secret() -> PaserkResult<PaserkSecret<K4>> {
         use ed25519_dalek::SigningKey;
         use rand_core::{OsRng, TryRngCore};
 
         // Generate random seed bytes using our OsRng
         let mut seed = [0u8; 32];
-        OsRng.try_fill_bytes(&mut seed).expect("RNG should work");
+        OsRng.try_fill_bytes(&mut seed).map_err(|_| PaserkError::CryptoError)?;
 
         // Create Ed25519 signing key from seed
         let signing_key = SigningKey::from_bytes(&seed);
-        PaserkSecret::<K4>::from(signing_key.to_keypair_bytes())
+        Ok(PaserkSecret::<K4>::from(signing_key.to_keypair_bytes()))
     }
 
     #[test]
@@ -375,57 +375,52 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_seal_unseal_roundtrip() {
-        let secret_key = generate_test_secret();
+    fn test_seal_unseal_roundtrip() -> PaserkResult<()> {
+        let secret_key = generate_test_secret()?;
         let local_key = PaserkLocal::<K4>::from([0x42u8; 32]);
 
-        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)
-            .expect("seal should succeed");
+        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)?;
 
-        let unsealed = sealed
-            .try_unseal(&secret_key)
-            .expect("unseal should succeed");
+        let unsealed = sealed.try_unseal(&secret_key)?;
 
         assert_eq!(unsealed.as_bytes(), local_key.as_bytes());
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_serialize_parse_roundtrip() {
-        let secret_key = generate_test_secret();
+    fn test_serialize_parse_roundtrip() -> PaserkResult<()> {
+        let secret_key = generate_test_secret()?;
         let local_key = PaserkLocal::<K4>::from([0x42u8; 32]);
 
-        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)
-            .expect("seal should succeed");
+        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)?;
 
         let serialized = sealed.to_string();
         assert!(serialized.starts_with("k4.seal."));
 
-        let parsed = PaserkSeal::<K4>::try_from(serialized.as_str())
-            .expect("parse should succeed");
+        let parsed = PaserkSeal::<K4>::try_from(serialized.as_str())?;
 
         assert_eq!(sealed, parsed);
 
-        let unsealed = parsed
-            .try_unseal(&secret_key)
-            .expect("unseal should succeed");
+        let unsealed = parsed.try_unseal(&secret_key)?;
 
         assert_eq!(unsealed.as_bytes(), local_key.as_bytes());
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_unseal_wrong_key() {
-        let secret_key1 = generate_test_secret();
-        let secret_key2 = generate_test_secret();
+    fn test_unseal_wrong_key() -> PaserkResult<()> {
+        let secret_key1 = generate_test_secret()?;
+        let secret_key2 = generate_test_secret()?;
 
         let local_key = PaserkLocal::<K4>::from([0x42u8; 32]);
 
-        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key1)
-            .expect("seal should succeed");
+        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key1)?;
 
         let result = sealed.try_unseal(&secret_key2);
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
@@ -448,16 +443,16 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_debug() {
-        let secret_key = generate_test_secret();
+    fn test_debug() -> PaserkResult<()> {
+        let secret_key = generate_test_secret()?;
         let local_key = PaserkLocal::<K4>::from([0x42u8; 32]);
 
-        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)
-            .expect("seal should succeed");
+        let sealed = PaserkSeal::<K4>::try_seal(&local_key, &secret_key)?;
 
         let debug_str = format!("{sealed:?}");
         assert!(debug_str.contains("PaserkSeal"));
         assert!(debug_str.contains("k4"));
         assert!(debug_str.contains("[ENCRYPTED]"));
+        Ok(())
     }
 }

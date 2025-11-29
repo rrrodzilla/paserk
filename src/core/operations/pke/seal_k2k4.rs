@@ -199,14 +199,14 @@ mod tests {
     /// Helper function to generate an Ed25519 keypair for testing.
     /// Uses our rand_core 0.9 OsRng to avoid version conflicts.
     #[cfg(feature = "k4")]
-    fn generate_test_keypair() -> (ed25519_dalek::SigningKey, [u8; 64], [u8; 32]) {
+    fn generate_test_keypair() -> PaserkResult<(ed25519_dalek::SigningKey, [u8; 64], [u8; 32])> {
         use ed25519_dalek::SigningKey;
         use rand_core::{OsRng, TryRngCore};
         use x25519_dalek::{PublicKey, StaticSecret};
 
         // Generate random seed bytes using our OsRng
         let mut seed = [0u8; 32];
-        OsRng.try_fill_bytes(&mut seed).expect("RNG should work");
+        OsRng.try_fill_bytes(&mut seed).map_err(|_| PaserkError::CryptoError)?;
 
         // Create Ed25519 signing key from seed
         let signing_key = SigningKey::from_bytes(&seed);
@@ -216,21 +216,20 @@ mod tests {
         let x25519_secret = StaticSecret::from(signing_key.to_scalar_bytes());
         let x25519_public = PublicKey::from(&x25519_secret).to_bytes();
 
-        (signing_key, keypair_bytes, x25519_public)
+        Ok((signing_key, keypair_bytes, x25519_public))
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_seal_unseal_roundtrip() {
-        let (signing_key, secret_key_bytes, x25519_public) = generate_test_keypair();
+    fn test_seal_unseal_roundtrip() -> PaserkResult<()> {
+        let (signing_key, secret_key_bytes, x25519_public) = generate_test_keypair()?;
         let _ = signing_key; // Silence unused warning
 
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
         let (ephemeral_pk, ciphertext, tag) =
-            seal_k2k4(&plaintext_key, &x25519_public, header)
-                .expect("seal should succeed");
+            seal_k2k4(&plaintext_key, &x25519_public, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
@@ -240,43 +239,41 @@ mod tests {
             &tag,
             &secret_key_bytes,
             header,
-        )
-        .expect("unseal should succeed");
+        )?;
 
         assert_eq!(unsealed, plaintext_key);
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_seal_produces_different_output() {
-        let (_, _, x25519_public) = generate_test_keypair();
+    fn test_seal_produces_different_output() -> PaserkResult<()> {
+        let (_, _, x25519_public) = generate_test_keypair()?;
 
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
-        let (epk1, ct1, tag1) = seal_k2k4(&plaintext_key, &x25519_public, header)
-            .expect("seal should succeed");
-        let (epk2, ct2, tag2) = seal_k2k4(&plaintext_key, &x25519_public, header)
-            .expect("seal should succeed");
+        let (epk1, ct1, tag1) = seal_k2k4(&plaintext_key, &x25519_public, header)?;
+        let (epk2, ct2, tag2) = seal_k2k4(&plaintext_key, &x25519_public, header)?;
 
         // Different ephemeral keys should produce different outputs
         assert_ne!(epk1, epk2);
         assert_ne!(ct1, ct2);
         assert_ne!(tag1, tag2);
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_unseal_wrong_key() {
-        let (_, _, x25519_public1) = generate_test_keypair();
-        let (_, secret_key2_bytes, _) = generate_test_keypair();
+    fn test_unseal_wrong_key() -> PaserkResult<()> {
+        let (_, _, x25519_public1) = generate_test_keypair()?;
+        let (_, secret_key2_bytes, _) = generate_test_keypair()?;
 
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
         let (ephemeral_pk, ciphertext, tag) =
-            seal_k2k4(&plaintext_key, &x25519_public1, header)
-                .expect("seal should succeed");
+            seal_k2k4(&plaintext_key, &x25519_public1, header)?;
 
         // Try to unseal with wrong key
         let result = unseal_k2k4(
@@ -288,19 +285,19 @@ mod tests {
         );
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_unseal_modified_tag() {
-        let (_, secret_key_bytes, x25519_public) = generate_test_keypair();
+    fn test_unseal_modified_tag() -> PaserkResult<()> {
+        let (_, secret_key_bytes, x25519_public) = generate_test_keypair()?;
 
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
         let (ephemeral_pk, ciphertext, mut tag) =
-            seal_k2k4(&plaintext_key, &x25519_public, header)
-                .expect("seal should succeed");
+            seal_k2k4(&plaintext_key, &x25519_public, header)?;
 
         tag[0] ^= 0xff;
 
@@ -313,5 +310,6 @@ mod tests {
         );
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 }

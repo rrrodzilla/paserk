@@ -423,49 +423,47 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pbkw_wrap_unwrap_local_roundtrip() {
+    fn test_pbkw_wrap_unwrap_local_roundtrip() -> PaserkResult<()> {
         let plaintext_key = [0x13u8; 32];
         let password = b"hunter2";
         let params = test_params();
         let header = "k4.local-pw.";
 
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_local_k2k4(&plaintext_key, password, &params, header)
-                .expect("wrap should succeed");
+            pbkw_wrap_local_k2k4(&plaintext_key, password, &params, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
         let unwrapped =
-            pbkw_unwrap_local_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header)
-                .expect("unwrap should succeed");
+            pbkw_unwrap_local_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
 
         assert_eq!(unwrapped, plaintext_key);
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pbkw_wrap_unwrap_secret_roundtrip() {
+    fn test_pbkw_wrap_unwrap_secret_roundtrip() -> PaserkResult<()> {
         let plaintext_key = [0x13u8; 64];
         let password = b"hunter2";
         let params = test_params();
         let header = "k4.secret-pw.";
 
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_secret_k2k4(&plaintext_key, password, &params, header)
-                .expect("wrap should succeed");
+            pbkw_wrap_secret_k2k4(&plaintext_key, password, &params, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
         let unwrapped =
-            pbkw_unwrap_secret_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header)
-                .expect("unwrap should succeed");
+            pbkw_unwrap_secret_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
 
         assert_eq!(unwrapped, plaintext_key);
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pbkw_unwrap_wrong_password() {
+    fn test_pbkw_unwrap_wrong_password() -> PaserkResult<()> {
         let plaintext_key = [0x13u8; 32];
         let password = b"hunter2";
         let wrong_password = b"hunter3";
@@ -473,8 +471,7 @@ mod tests {
         let header = "k4.local-pw.";
 
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_local_k2k4(&plaintext_key, password, &params, header)
-                .expect("wrap should succeed");
+            pbkw_wrap_local_k2k4(&plaintext_key, password, &params, header)?;
 
         let result = pbkw_unwrap_local_k2k4(
             &salt,
@@ -487,19 +484,19 @@ mod tests {
         );
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_pbkw_unwrap_modified_tag() {
+    fn test_pbkw_unwrap_modified_tag() -> PaserkResult<()> {
         let plaintext_key = [0x13u8; 32];
         let password = b"hunter2";
         let params = test_params();
         let header = "k4.local-pw.";
 
         let (salt, nonce, ciphertext, mut tag) =
-            pbkw_wrap_local_k2k4(&plaintext_key, password, &params, header)
-                .expect("wrap should succeed");
+            pbkw_wrap_local_k2k4(&plaintext_key, password, &params, header)?;
 
         tag[0] ^= 0xff;
 
@@ -507,6 +504,7 @@ mod tests {
             pbkw_unwrap_local_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]

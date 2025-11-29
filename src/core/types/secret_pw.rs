@@ -389,56 +389,51 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_wrap_unwrap_roundtrip() {
+    fn test_wrap_unwrap_roundtrip() -> PaserkResult<()> {
         let key = PaserkSecret::<K4>::from([0x42u8; 64]);
         let password = b"test-password";
 
-        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())
-            .expect("wrap should succeed");
+        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())?;
 
-        let unwrapped = wrapped
-            .try_unwrap(password, test_params())
-            .expect("unwrap should succeed");
+        let unwrapped = wrapped.try_unwrap(password, test_params())?;
 
         assert_eq!(unwrapped.as_bytes(), key.as_bytes());
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_serialize_parse_roundtrip() {
+    fn test_serialize_parse_roundtrip() -> PaserkResult<()> {
         let key = PaserkSecret::<K4>::from([0x42u8; 64]);
         let password = b"test-password";
 
-        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())
-            .expect("wrap should succeed");
+        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())?;
 
         let serialized = wrapped.to_string();
         assert!(serialized.starts_with("k4.secret-pw."));
 
-        let parsed =
-            PaserkSecretPw::<K4>::try_from(serialized.as_str()).expect("parse should succeed");
+        let parsed = PaserkSecretPw::<K4>::try_from(serialized.as_str())?;
 
         assert_eq!(wrapped, parsed);
 
-        let unwrapped = parsed
-            .try_unwrap(password, test_params())
-            .expect("unwrap should succeed");
+        let unwrapped = parsed.try_unwrap(password, test_params())?;
 
         assert_eq!(unwrapped.as_bytes(), key.as_bytes());
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_unwrap_wrong_password() {
+    fn test_unwrap_wrong_password() -> PaserkResult<()> {
         let key = PaserkSecret::<K4>::from([0x42u8; 64]);
         let password = b"correct-password";
         let wrong_password = b"wrong-password";
 
-        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())
-            .expect("wrap should succeed");
+        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())?;
 
         let result = wrapped.try_unwrap(wrong_password, test_params());
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
@@ -461,16 +456,16 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_debug() {
+    fn test_debug() -> PaserkResult<()> {
         let key = PaserkSecret::<K4>::from([0x42u8; 64]);
         let password = b"test-password";
 
-        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())
-            .expect("wrap should succeed");
+        let wrapped = PaserkSecretPw::<K4>::try_wrap(&key, password, test_params())?;
 
         let debug_str = format!("{wrapped:?}");
         assert!(debug_str.contains("PaserkSecretPw"));
         assert!(debug_str.contains("k4"));
         assert!(debug_str.contains("[ENCRYPTED]"));
+        Ok(())
     }
 }

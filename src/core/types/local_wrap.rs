@@ -291,54 +291,51 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_wrap_unwrap_roundtrip() {
+    fn test_wrap_unwrap_roundtrip() -> PaserkResult<()> {
         let wrapping_key = PaserkLocal::<K4>::from([0x42u8; 32]);
         let key_to_wrap = PaserkLocal::<K4>::from([0x13u8; 32]);
 
-        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)
-            .expect("wrap should succeed");
+        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
 
-        let unwrapped = wrapped.try_unwrap(&wrapping_key)
-            .expect("unwrap should succeed");
+        let unwrapped = wrapped.try_unwrap(&wrapping_key)?;
 
         assert_eq!(unwrapped.as_bytes(), key_to_wrap.as_bytes());
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_serialize_parse_roundtrip() {
+    fn test_serialize_parse_roundtrip() -> PaserkResult<()> {
         let wrapping_key = PaserkLocal::<K4>::from([0x42u8; 32]);
         let key_to_wrap = PaserkLocal::<K4>::from([0x13u8; 32]);
 
-        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)
-            .expect("wrap should succeed");
+        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
 
         let serialized = wrapped.to_string();
         assert!(serialized.starts_with("k4.local-wrap.pie."));
 
-        let parsed = PaserkLocalWrap::<K4, Pie>::try_from(serialized.as_str())
-            .expect("parse should succeed");
+        let parsed = PaserkLocalWrap::<K4, Pie>::try_from(serialized.as_str())?;
 
         assert_eq!(wrapped, parsed);
 
-        let unwrapped = parsed.try_unwrap(&wrapping_key)
-            .expect("unwrap should succeed");
+        let unwrapped = parsed.try_unwrap(&wrapping_key)?;
 
         assert_eq!(unwrapped.as_bytes(), key_to_wrap.as_bytes());
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_unwrap_wrong_key() {
+    fn test_unwrap_wrong_key() -> PaserkResult<()> {
         let wrapping_key = PaserkLocal::<K4>::from([0x42u8; 32]);
         let wrong_key = PaserkLocal::<K4>::from([0x43u8; 32]);
         let key_to_wrap = PaserkLocal::<K4>::from([0x13u8; 32]);
 
-        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)
-            .expect("wrap should succeed");
+        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
 
         let result = wrapped.try_unwrap(&wrong_key);
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
     }
 
     #[test]
@@ -373,17 +370,17 @@ mod tests {
 
     #[test]
     #[cfg(feature = "k4")]
-    fn test_debug() {
+    fn test_debug() -> PaserkResult<()> {
         let wrapping_key = PaserkLocal::<K4>::from([0x42u8; 32]);
         let key_to_wrap = PaserkLocal::<K4>::from([0x13u8; 32]);
 
-        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)
-            .expect("wrap should succeed");
+        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
 
         let debug_str = format!("{wrapped:?}");
         assert!(debug_str.contains("PaserkLocalWrap"));
         assert!(debug_str.contains("k4"));
         assert!(debug_str.contains("pie"));
         assert!(debug_str.contains("[ENCRYPTED]"));
+        Ok(())
     }
 }
