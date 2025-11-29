@@ -35,6 +35,8 @@
 //! | `lid` | `k{v}.lid.{data}` | Local key identifier |
 //! | `pid` | `k{v}.pid.{data}` | Public key identifier |
 //! | `sid` | `k{v}.sid.{data}` | Secret key identifier |
+//! | `local-wrap` | `k{v}.local-wrap.{protocol}.{data}` | Wrapped symmetric key |
+//! | `secret-wrap` | `k{v}.secret-wrap.{protocol}.{data}` | Wrapped secret key |
 //!
 //! # Versions
 //!
@@ -82,14 +84,23 @@ pub use core::version::{K1, K2, K3, K4, PaserkVersion};
 // Re-export types based on enabled version features
 #[cfg(feature = "k4")]
 pub use core::types::{
-    PaserkLocal, PaserkLocalId, PaserkPublic, PaserkPublicId, PaserkSecret, PaserkSecretId,
+    PaserkLocal, PaserkLocalId, PaserkLocalPw, PaserkLocalWrap, PaserkPublic, PaserkPublicId,
+    PaserkSeal, PaserkSecret, PaserkSecretId, PaserkSecretPw, PaserkSecretWrap,
 };
+
+// Re-export wrap protocol markers
+pub use core::operations::wrap::{Pie, WrapProtocol};
+
+// Re-export PBKW parameters
+#[cfg(any(feature = "k2", feature = "k4"))]
+pub use core::operations::pbkw::Argon2Params;
 
 // Version-specific type aliases for when only one version is enabled
 #[cfg(all(feature = "k4", not(any(feature = "k1", feature = "k2", feature = "k3"))))]
 pub mod types {
     //! Convenient type aliases for K4 (default version).
 
+    use super::core::operations::wrap::Pie;
     use super::core::types;
     use super::K4;
 
@@ -105,4 +116,14 @@ pub mod types {
     pub type PublicKeyId = types::PaserkPublicId<K4>;
     /// Secret key ID for K4.
     pub type SecretKeyId = types::PaserkSecretId<K4>;
+    /// Wrapped local key for K4.
+    pub type LocalKeyWrap = types::PaserkLocalWrap<K4, Pie>;
+    /// Wrapped secret key for K4.
+    pub type SecretKeyWrap = types::PaserkSecretWrap<K4, Pie>;
+    /// Password-wrapped local key for K4.
+    pub type LocalKeyPw = types::PaserkLocalPw<K4>;
+    /// Password-wrapped secret key for K4.
+    pub type SecretKeyPw = types::PaserkSecretPw<K4>;
+    /// Sealed (PKE-encrypted) local key for K4.
+    pub type SealedKey = types::PaserkSeal<K4>;
 }

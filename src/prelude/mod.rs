@@ -18,7 +18,13 @@
 
 // Re-export core types for convenience
 pub use crate::core::error::{PaserkError, PaserkResult};
+pub use crate::core::operations::wrap::{Pie, WrapProtocol};
 pub use crate::core::types::{
-    PaserkLocal, PaserkLocalId, PaserkPublic, PaserkPublicId, PaserkSecret, PaserkSecretId,
+    PaserkLocal, PaserkLocalId, PaserkLocalPw, PaserkLocalWrap, PaserkPublic, PaserkPublicId,
+    PaserkSeal, PaserkSecret, PaserkSecretId, PaserkSecretPw, PaserkSecretWrap,
 };
 pub use crate::core::version::{K1, K2, K3, K4, PaserkVersion};
+
+// Re-export PBKW parameters
+#[cfg(any(feature = "k2", feature = "k4"))]
+pub use crate::core::operations::pbkw::Argon2Params;
