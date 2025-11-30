@@ -176,8 +176,8 @@ pub fn pbkw_wrap_local_k2k4(
     // Compute authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
     let memlimit_bytes = u64::from(params.memory_kib) * 1024;
-    let mut tag_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac = <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key)
+        .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, &salt);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
@@ -264,8 +264,8 @@ pub fn pbkw_unwrap_local_k2k4(
     // Verify authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
     let memlimit_bytes = u64::from(params.memory_kib) * 1024;
-    let mut tag_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac = <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key)
+        .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, salt);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
@@ -377,8 +377,8 @@ pub fn pbkw_wrap_secret_k2k4(
     // Compute authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
     let memlimit_bytes = u64::from(params.memory_kib) * 1024;
-    let mut tag_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac = <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key)
+        .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, &salt);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
@@ -465,8 +465,8 @@ pub fn pbkw_unwrap_secret_k2k4(
     // Verify authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
     let memlimit_bytes = u64::from(params.memory_kib) * 1024;
-    let mut tag_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac = <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key)
+        .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, salt);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
@@ -522,7 +522,9 @@ mod tests {
         let paserk = "k4.local-pw.9VvzoqE_i23NOqsP9xoijQAAAAAEAAAAAAAAAgAAAAG_uxDZC-NsYyOW8OUOqISJqgHN8xIfAXiPfmFTfB4GPidUzm4aKzMGJmZtRPeyZCV11MxEJS3VMIRHXxYsfUQsmWLALpFwqUhxZdk_ymFcK2Nk0-N7CVp-";
         let header = "k4.local-pw.";
         let password = b"636f727265637420686f727365206261747465727920737461706c65";
-        let expected_key = hex::decode("707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f").unwrap();
+        let expected_key =
+            hex::decode("707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f")
+                .unwrap();
 
         // Decode the data part
         let data_b64 = paserk.strip_prefix(header).unwrap();
@@ -538,12 +540,14 @@ mod tests {
         let tag: [u8; PBKW_TAG_SIZE] = data[88..120].try_into().unwrap();
 
         let params = Argon2Params {
-            memory_kib: u32::try_from(memlimit_bytes / 1024).map_err(|_| PaserkError::InvalidKey)?,
+            memory_kib: u32::try_from(memlimit_bytes / 1024)
+                .map_err(|_| PaserkError::InvalidKey)?,
             iterations: opslimit,
             parallelism,
         };
 
-        let unwrapped = pbkw_unwrap_local_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
+        let unwrapped =
+            pbkw_unwrap_local_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
 
         assert_eq!(unwrapped.as_slice(), expected_key.as_slice());
         Ok(())

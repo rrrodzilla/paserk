@@ -18,10 +18,15 @@ pub const K3_SEAL_CIPHERTEXT_SIZE: usize = 32;
 pub const K3_SEAL_TAG_SIZE: usize = 48;
 
 /// Total size of sealed data: `ephemeral_pk` || ciphertext || tag.
-pub const K3_SEAL_DATA_SIZE: usize = K3_EPHEMERAL_PK_SIZE + K3_SEAL_CIPHERTEXT_SIZE + K3_SEAL_TAG_SIZE;
+pub const K3_SEAL_DATA_SIZE: usize =
+    K3_EPHEMERAL_PK_SIZE + K3_SEAL_CIPHERTEXT_SIZE + K3_SEAL_TAG_SIZE;
 
 /// Output type for seal operation: (`ephemeral_pk`, ciphertext, tag).
-pub type K3SealOutput = ([u8; K3_EPHEMERAL_PK_SIZE], [u8; K3_SEAL_CIPHERTEXT_SIZE], [u8; K3_SEAL_TAG_SIZE]);
+pub type K3SealOutput = (
+    [u8; K3_EPHEMERAL_PK_SIZE],
+    [u8; K3_SEAL_CIPHERTEXT_SIZE],
+    [u8; K3_SEAL_TAG_SIZE],
+);
 
 /// Domain separation for seal encryption key derivation.
 const SEAL_EK_DOMAIN: &[u8] = b"paserk.seal.k3";
@@ -64,8 +69,8 @@ pub fn seal_k3(
     type Aes256Ctr = Ctr64BE<aes::Aes256>;
 
     // Parse recipient's public key from SEC1 compressed format
-    let recipient_point = EncodedPoint::from_bytes(recipient_pk)
-        .map_err(|_| PaserkError::InvalidKey)?;
+    let recipient_point =
+        EncodedPoint::from_bytes(recipient_pk).map_err(|_| PaserkError::InvalidKey)?;
     let recipient_public = PublicKey::from_sec1_bytes(recipient_point.as_bytes())
         .map_err(|_| PaserkError::InvalidKey)?;
 
@@ -112,8 +117,8 @@ pub fn seal_k3(
     cipher.apply_keystream(&mut ciphertext);
 
     // Compute authentication tag: tag = HMAC-SHA384(Ak, header || ephemeral_pk || ciphertext)
-    let mut tag_mac = <HmacSha384 as Mac>::new_from_slice(&auth_key)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac =
+        <HmacSha384 as Mac>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     tag_mac.update(header.as_bytes());
     tag_mac.update(&ephemeral_pk);
     tag_mac.update(&ciphertext);
@@ -163,8 +168,8 @@ pub fn unseal_k3(
     type Aes256Ctr = Ctr64BE<aes::Aes256>;
 
     // Parse recipient's secret key
-    let recipient_secret = SecretKey::from_slice(recipient_sk)
-        .map_err(|_| PaserkError::InvalidKey)?;
+    let recipient_secret =
+        SecretKey::from_slice(recipient_sk).map_err(|_| PaserkError::InvalidKey)?;
 
     // Compute recipient's P-384 public key for derivation
     let recipient_public = recipient_secret.public_key();
@@ -173,8 +178,8 @@ pub fn unseal_k3(
     p384_recipient_pk.copy_from_slice(recipient_point.as_bytes());
 
     // Parse ephemeral public key
-    let ephemeral_point = EncodedPoint::from_bytes(ephemeral_pk)
-        .map_err(|_| PaserkError::InvalidKey)?;
+    let ephemeral_point =
+        EncodedPoint::from_bytes(ephemeral_pk).map_err(|_| PaserkError::InvalidKey)?;
     let ephemeral_public = PublicKey::from_sec1_bytes(ephemeral_point.as_bytes())
         .map_err(|_| PaserkError::InvalidKey)?;
 
@@ -206,8 +211,8 @@ pub fn unseal_k3(
     auth_key.copy_from_slice(&ak_result[..48]);
 
     // Verify authentication tag
-    let mut tag_mac = <HmacSha384 as Mac>::new_from_slice(&auth_key)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac =
+        <HmacSha384 as Mac>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     tag_mac.update(header.as_bytes());
     tag_mac.update(ephemeral_pk);
     tag_mac.update(ciphertext);

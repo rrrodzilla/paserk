@@ -40,7 +40,12 @@ pub fn compute_id<V: PaserkVersion>(header: &str, paserk_string: &str) -> [u8; I
 /// This is the internal implementation that dispatches to the appropriate
 /// algorithm based on the version number.
 #[must_use]
-fn compute_id_for_version(version: u8, header: &str, paserk_string: &str) -> [u8; ID_HASH_SIZE] {
+fn compute_id_for_version(
+    #[allow(unused_variables)] version: u8,
+    #[allow(unused_variables)] header: &str,
+    #[allow(unused_variables)] paserk_string: &str,
+) -> [u8; ID_HASH_SIZE] {
+    #[allow(clippy::match_single_binding)]
     match version {
         #[cfg(any(feature = "k2", feature = "k4"))]
         2 | 4 => compute_id_blake2b(header, paserk_string),
@@ -92,6 +97,12 @@ fn compute_id_sha384(header: &str, paserk_string: &str) -> [u8; ID_HASH_SIZE] {
 }
 
 #[cfg(test)]
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 mod tests {
     use super::*;
 

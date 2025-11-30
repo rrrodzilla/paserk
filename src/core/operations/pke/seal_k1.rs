@@ -18,7 +18,8 @@ pub const K1_SEAL_CIPHERTEXT_SIZE: usize = 32;
 pub const K1_SEAL_TAG_SIZE: usize = 48;
 
 /// Total size of sealed data: tag || edk || c (per PASERK spec order).
-pub const K1_SEAL_DATA_SIZE: usize = K1_SEAL_TAG_SIZE + K1_SEAL_CIPHERTEXT_SIZE + K1_RSA_CIPHERTEXT_SIZE;
+pub const K1_SEAL_DATA_SIZE: usize =
+    K1_SEAL_TAG_SIZE + K1_SEAL_CIPHERTEXT_SIZE + K1_RSA_CIPHERTEXT_SIZE;
 
 /// Output type for seal operation: (tag, `encrypted_data_key`, `rsa_ciphertext`).
 pub type K1SealOutput = (
@@ -96,8 +97,8 @@ pub fn seal_k1(
     let c_hash = Sha384::digest(c);
 
     // Derive encryption key and counter: HMAC-SHA384(msg = 0x01 || h || r, key = SHA384(c))
-    let mut ek_mac = <HmacSha384 as Mac>::new_from_slice(&c_hash)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut ek_mac =
+        <HmacSha384 as Mac>::new_from_slice(&c_hash).map_err(|_| PaserkError::CryptoError)?;
     ek_mac.update(&[EK_DOMAIN_BYTE]);
     ek_mac.update(header.as_bytes());
     ek_mac.update(&r_bytes);
@@ -110,8 +111,8 @@ pub fn seal_k1(
     counter.copy_from_slice(&ek_result[32..48]);
 
     // Derive authentication key: HMAC-SHA384(msg = 0x02 || h || r, key = SHA384(c))
-    let mut ak_mac = <HmacSha384 as Mac>::new_from_slice(&c_hash)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut ak_mac =
+        <HmacSha384 as Mac>::new_from_slice(&c_hash).map_err(|_| PaserkError::CryptoError)?;
     ak_mac.update(&[AK_DOMAIN_BYTE]);
     ak_mac.update(header.as_bytes());
     ak_mac.update(&r_bytes);
@@ -125,8 +126,8 @@ pub fn seal_k1(
     cipher.apply_keystream(&mut edk);
 
     // Compute authentication tag: t = HMAC-SHA384(msg = h || c || edk, key = Ak)
-    let mut tag_mac = <HmacSha384 as Mac>::new_from_slice(&auth_key)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac =
+        <HmacSha384 as Mac>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     tag_mac.update(header.as_bytes());
     tag_mac.update(&c);
     tag_mac.update(&edk);
@@ -196,8 +197,8 @@ pub fn unseal_k1(
     let c_hash = Sha384::digest(c);
 
     // Derive authentication key: HMAC-SHA384(msg = 0x02 || h || r, key = SHA384(c))
-    let mut ak_mac = <HmacSha384 as Mac>::new_from_slice(&c_hash)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut ak_mac =
+        <HmacSha384 as Mac>::new_from_slice(&c_hash).map_err(|_| PaserkError::CryptoError)?;
     ak_mac.update(&[AK_DOMAIN_BYTE]);
     ak_mac.update(header.as_bytes());
     ak_mac.update(&r_bytes);
@@ -206,8 +207,8 @@ pub fn unseal_k1(
     auth_key.copy_from_slice(&ak_result[..48]);
 
     // Verify authentication tag
-    let mut tag_mac = <HmacSha384 as Mac>::new_from_slice(&auth_key)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut tag_mac =
+        <HmacSha384 as Mac>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     tag_mac.update(header.as_bytes());
     tag_mac.update(c);
     tag_mac.update(edk);
@@ -224,8 +225,8 @@ pub fn unseal_k1(
     }
 
     // Derive encryption key and counter: HMAC-SHA384(msg = 0x01 || h || r, key = SHA384(c))
-    let mut ek_mac = <HmacSha384 as Mac>::new_from_slice(&c_hash)
-        .map_err(|_| PaserkError::CryptoError)?;
+    let mut ek_mac =
+        <HmacSha384 as Mac>::new_from_slice(&c_hash).map_err(|_| PaserkError::CryptoError)?;
     ek_mac.update(&[EK_DOMAIN_BYTE]);
     ek_mac.update(header.as_bytes());
     ek_mac.update(&r_bytes);
@@ -260,8 +261,8 @@ mod tests {
 
         // Use a fixed seed for reproducible tests (still secure random for the key itself)
         let mut rng = rand::thread_rng();
-        let private_key = RsaPrivateKey::new(&mut rng, 4096)
-            .map_err(|_| PaserkError::CryptoError)?;
+        let private_key =
+            RsaPrivateKey::new(&mut rng, 4096).map_err(|_| PaserkError::CryptoError)?;
         let public_key = private_key.to_public_key();
 
         Ok((private_key, public_key))
@@ -361,8 +362,8 @@ mod tests {
 
         // Generate a 2048-bit key (wrong size)
         let mut rng = rand::thread_rng();
-        let private_key = RsaPrivateKey::new(&mut rng, 2048)
-            .map_err(|_| PaserkError::CryptoError)?;
+        let private_key =
+            RsaPrivateKey::new(&mut rng, 2048).map_err(|_| PaserkError::CryptoError)?;
         let public_key = private_key.to_public_key();
 
         let plaintext_key = [0x42u8; 32];

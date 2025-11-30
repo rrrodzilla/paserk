@@ -10,8 +10,28 @@ use core::marker::PhantomData;
 
 use base64::prelude::*;
 
-use crate::core::error::{PaserkError, PaserkResult};
-use crate::core::operations::wrap::{Pie, WrapProtocol, PIE_NONCE_SIZE, PIE_TAG_SIZE};
+use crate::core::error::PaserkError;
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
+use crate::core::error::PaserkResult;
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
+use crate::core::operations::wrap::Pie;
+use crate::core::operations::wrap::{WrapProtocol, PIE_NONCE_SIZE, PIE_TAG_SIZE};
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 use crate::core::types::PaserkLocal;
 use crate::core::version::PaserkVersion;
 
@@ -117,8 +137,8 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
     /// Returns the expected tag size for this version.
     const fn expected_tag_size() -> usize {
         match V::VERSION {
-            1 | 3 => 48,           // 48 bytes - HMAC-SHA384
-            _ => PIE_TAG_SIZE,     // 32 bytes - BLAKE2b (K2, K4)
+            1 | 3 => 48,       // 48 bytes - HMAC-SHA384
+            _ => PIE_TAG_SIZE, // 32 bytes - BLAKE2b (K2, K4)
         }
     }
 }
@@ -458,6 +478,12 @@ impl<V: PaserkVersion, P: WrapProtocol> PartialEq for PaserkLocalWrap<V, P> {
 impl<V: PaserkVersion, P: WrapProtocol> Eq for PaserkLocalWrap<V, P> {}
 
 #[cfg(test)]
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 #[allow(deprecated)]
 mod tests {
     use super::*;

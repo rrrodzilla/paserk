@@ -11,7 +11,14 @@ use core::marker::PhantomData;
 
 use base64::prelude::*;
 
-use crate::core::error::{PaserkError, PaserkResult};
+use crate::core::error::PaserkError;
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
+use crate::core::error::PaserkResult;
 use crate::core::version::PaserkVersion;
 
 #[cfg(any(feature = "k2", feature = "k4"))]
@@ -24,6 +31,12 @@ use crate::core::operations::pbkw::{
     Pbkdf2Params, AES_CTR_NONCE_SIZE, PBKDF2_SALT_SIZE, PBKW_K1K3_TAG_SIZE,
 };
 
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 use crate::core::types::PaserkLocal;
 
 /// A symmetric key wrapped with a password.
@@ -164,7 +177,9 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkLocalPw<V> {
         // Concatenate: salt || memlimit_BE64 || opslimit_BE32 || parallelism_BE32 || nonce || ciphertext || tag
         // Convert params.memory_kib to bytes for memlimit
         let memlimit_bytes = u64::from(params.memory_kib) * 1024;
-        let mut data = Vec::with_capacity(ARGON2_SALT_SIZE + 8 + 4 + 4 + XCHACHA20_NONCE_SIZE + 32 + PBKW_TAG_SIZE);
+        let mut data = Vec::with_capacity(
+            ARGON2_SALT_SIZE + 8 + 4 + 4 + XCHACHA20_NONCE_SIZE + 32 + PBKW_TAG_SIZE,
+        );
         data.extend_from_slice(&salt);
         data.extend_from_slice(&memlimit_bytes.to_be_bytes());
         data.extend_from_slice(&params.iterations.to_be_bytes());
@@ -190,7 +205,11 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkLocalPw<V> {
     /// # Errors
     ///
     /// Returns an error if authentication fails or the password is wrong.
-    pub fn try_unwrap(&self, password: &[u8], _params: Argon2Params) -> PaserkResult<PaserkLocal<V>> {
+    pub fn try_unwrap(
+        &self,
+        password: &[u8],
+        _params: Argon2Params,
+    ) -> PaserkResult<PaserkLocal<V>> {
         use crate::core::operations::pbkw::pbkw_unwrap_local_k2k4;
 
         let header = Self::header();
@@ -206,15 +225,28 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkLocalPw<V> {
         offset += ARGON2_SALT_SIZE;
 
         // Extract embedded Argon2 parameters
-        let memlimit_bytes = u64::from_be_bytes(self.data[offset..offset + 8].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        let memlimit_bytes = u64::from_be_bytes(
+            self.data[offset..offset + 8]
+                .try_into()
+                .map_err(|_| PaserkError::InvalidKey)?,
+        );
         offset += 8;
-        let opslimit = u32::from_be_bytes(self.data[offset..offset + 4].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        let opslimit = u32::from_be_bytes(
+            self.data[offset..offset + 4]
+                .try_into()
+                .map_err(|_| PaserkError::InvalidKey)?,
+        );
         offset += 4;
-        let parallelism = u32::from_be_bytes(self.data[offset..offset + 4].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        let parallelism = u32::from_be_bytes(
+            self.data[offset..offset + 4]
+                .try_into()
+                .map_err(|_| PaserkError::InvalidKey)?,
+        );
         offset += 4;
 
         // Convert memlimit from bytes to KiB
-        let memory_kib = u32::try_from(memlimit_bytes / 1024).map_err(|_| PaserkError::InvalidKey)?;
+        let memory_kib =
+            u32::try_from(memlimit_bytes / 1024).map_err(|_| PaserkError::InvalidKey)?;
         let params = Argon2Params {
             memory_kib,
             iterations: opslimit,
@@ -227,15 +259,8 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkLocalPw<V> {
         offset += 32;
         tag.copy_from_slice(&self.data[offset..]);
 
-        let plaintext = pbkw_unwrap_local_k2k4(
-            &salt,
-            &nonce,
-            &ciphertext,
-            &tag,
-            password,
-            &params,
-            &header,
-        )?;
+        let plaintext =
+            pbkw_unwrap_local_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, &header)?;
 
         Ok(PaserkLocal::from(plaintext))
     }
@@ -274,7 +299,8 @@ impl<V: PaserkVersion + crate::core::version::UsesPbkdf2> PaserkLocalPw<V> {
             pbkw_wrap_local_k1k3(key.as_bytes(), password, params, &header)?;
 
         // Concatenate: salt || iterations_BE32 || nonce || ciphertext || tag
-        let mut data = Vec::with_capacity(PBKDF2_SALT_SIZE + 4 + AES_CTR_NONCE_SIZE + 32 + PBKW_K1K3_TAG_SIZE);
+        let mut data =
+            Vec::with_capacity(PBKDF2_SALT_SIZE + 4 + AES_CTR_NONCE_SIZE + 32 + PBKW_K1K3_TAG_SIZE);
         data.extend_from_slice(&salt);
         data.extend_from_slice(&params.iterations.to_be_bytes());
         data.extend_from_slice(&nonce);
@@ -298,7 +324,11 @@ impl<V: PaserkVersion + crate::core::version::UsesPbkdf2> PaserkLocalPw<V> {
     /// # Errors
     ///
     /// Returns an error if authentication fails or the password is wrong.
-    pub fn try_unwrap_pbkdf2(&self, password: &[u8], _params: Pbkdf2Params) -> PaserkResult<PaserkLocal<V>> {
+    pub fn try_unwrap_pbkdf2(
+        &self,
+        password: &[u8],
+        _params: Pbkdf2Params,
+    ) -> PaserkResult<PaserkLocal<V>> {
         use crate::core::operations::pbkw::pbkw_unwrap_local_k1k3;
 
         let header = Self::header();
@@ -314,7 +344,11 @@ impl<V: PaserkVersion + crate::core::version::UsesPbkdf2> PaserkLocalPw<V> {
         offset += PBKDF2_SALT_SIZE;
 
         // Extract embedded PBKDF2 iterations
-        let iterations = u32::from_be_bytes(self.data[offset..offset + 4].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        let iterations = u32::from_be_bytes(
+            self.data[offset..offset + 4]
+                .try_into()
+                .map_err(|_| PaserkError::InvalidKey)?,
+        );
         offset += 4;
         let params = Pbkdf2Params { iterations };
 
@@ -324,15 +358,8 @@ impl<V: PaserkVersion + crate::core::version::UsesPbkdf2> PaserkLocalPw<V> {
         offset += 32;
         tag.copy_from_slice(&self.data[offset..]);
 
-        let plaintext = pbkw_unwrap_local_k1k3(
-            &salt,
-            &nonce,
-            &ciphertext,
-            &tag,
-            password,
-            params,
-            &header,
-        )?;
+        let plaintext =
+            pbkw_unwrap_local_k1k3(&salt, &nonce, &ciphertext, &tag, password, params, &header)?;
 
         Ok(PaserkLocal::from(plaintext))
     }
@@ -428,6 +455,12 @@ impl<V: PaserkVersion> PartialEq for PaserkLocalPw<V> {
 impl<V: PaserkVersion> Eq for PaserkLocalPw<V> {}
 
 #[cfg(test)]
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 mod tests {
     use super::*;
 

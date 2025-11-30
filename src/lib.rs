@@ -150,7 +150,7 @@ pub mod prelude;
 // Re-export commonly used items at crate root
 pub use core::error::{PaserkError, PaserkResult};
 #[allow(deprecated)]
-pub use core::version::{K1, K2, K3, K4, PaserkVersion};
+pub use core::version::{PaserkVersion, K1, K2, K3, K4};
 
 // Re-export types based on enabled version features
 #[cfg(feature = "k4")]
@@ -167,7 +167,10 @@ pub use core::operations::wrap::{Pie, WrapProtocol};
 pub use core::operations::pbkw::Argon2Params;
 
 // Version-specific type aliases for when only one version is enabled
-#[cfg(all(feature = "k4", not(any(feature = "k1-insecure", feature = "k2", feature = "k3"))))]
+#[cfg(all(
+    feature = "k4",
+    not(any(feature = "k1-insecure", feature = "k2", feature = "k3"))
+))]
 pub mod types {
     //! Convenient type aliases for K4 (default version).
 

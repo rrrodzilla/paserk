@@ -138,6 +138,12 @@ impl<V: PaserkVersion> TryFrom<String> for PaserkSecretId<V> {
 }
 
 #[cfg(test)]
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 mod tests {
     use super::*;
     use crate::core::version::K4;

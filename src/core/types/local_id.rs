@@ -142,6 +142,12 @@ impl<V: PaserkVersion> TryFrom<String> for PaserkLocalId<V> {
 }
 
 #[cfg(test)]
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 mod tests {
     use super::*;
     use crate::core::version::K4;
@@ -203,13 +209,15 @@ mod tests {
 
     #[test]
     fn test_invalid_version() {
-        let result = PaserkLocalId::<K4>::try_from("k2.lid.iVtYQDjr5gEijCSjJC3fQaJm7nCeQSeaty0Jixy8dbsk");
+        let result =
+            PaserkLocalId::<K4>::try_from("k2.lid.iVtYQDjr5gEijCSjJC3fQaJm7nCeQSeaty0Jixy8dbsk");
         assert!(matches!(result, Err(PaserkError::InvalidVersion)));
     }
 
     #[test]
     fn test_invalid_type() {
-        let result = PaserkLocalId::<K4>::try_from("k4.pid.iVtYQDjr5gEijCSjJC3fQaJm7nCeQSeaty0Jixy8dbsk");
+        let result =
+            PaserkLocalId::<K4>::try_from("k4.pid.iVtYQDjr5gEijCSjJC3fQaJm7nCeQSeaty0Jixy8dbsk");
         assert!(matches!(result, Err(PaserkError::InvalidHeader)));
     }
 }

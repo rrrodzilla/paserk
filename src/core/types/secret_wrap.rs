@@ -10,8 +10,28 @@ use core::marker::PhantomData;
 
 use base64::prelude::*;
 
-use crate::core::error::{PaserkError, PaserkResult};
-use crate::core::operations::wrap::{Pie, WrapProtocol, PIE_NONCE_SIZE, PIE_TAG_SIZE};
+use crate::core::error::PaserkError;
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
+use crate::core::error::PaserkResult;
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
+use crate::core::operations::wrap::Pie;
+use crate::core::operations::wrap::{WrapProtocol, PIE_NONCE_SIZE, PIE_TAG_SIZE};
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 use crate::core::types::PaserkSecret;
 use crate::core::version::PaserkVersion;
 
@@ -338,7 +358,8 @@ impl PaserkSecretWrap<crate::core::version::K3, Pie> {
 impl<V: PaserkVersion, P: WrapProtocol> Display for PaserkSecretWrap<V, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Concatenate tag || nonce || ciphertext (per PASERK spec)
-        let mut data = Vec::with_capacity(self.tag.len() + PIE_WRAP_NONCE_SIZE + self.ciphertext.len());
+        let mut data =
+            Vec::with_capacity(self.tag.len() + PIE_WRAP_NONCE_SIZE + self.ciphertext.len());
         data.extend_from_slice(&self.tag);
         data.extend_from_slice(&self.nonce);
         data.extend_from_slice(&self.ciphertext);
@@ -452,6 +473,12 @@ impl<V: PaserkVersion, P: WrapProtocol> PartialEq for PaserkSecretWrap<V, P> {
 impl<V: PaserkVersion, P: WrapProtocol> Eq for PaserkSecretWrap<V, P> {}
 
 #[cfg(test)]
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 mod tests {
     use super::*;
     use crate::core::types::PaserkLocal;

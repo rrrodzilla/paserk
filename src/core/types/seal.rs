@@ -18,10 +18,22 @@ use core::marker::PhantomData;
 
 use base64::prelude::*;
 
-use crate::core::error::{PaserkError, PaserkResult};
+use crate::core::error::PaserkError;
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
+use crate::core::error::PaserkResult;
 use crate::core::version::PaserkVersion;
 
-#[cfg(any(feature = "k1-insecure", feature = "k2", feature = "k3", feature = "k4"))]
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 use crate::core::types::PaserkLocal;
 
 #[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]

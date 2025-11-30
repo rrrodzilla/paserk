@@ -23,7 +23,11 @@ const SEAL_NONCE_SIZE: usize = 24;
 pub const SEAL_DATA_SIZE: usize = SEAL_TAG_SIZE + EPHEMERAL_PK_SIZE + SEAL_CIPHERTEXT_SIZE;
 
 /// Output type for seal operation: (tag, `ephemeral_pk`, ciphertext) - per spec order.
-pub type SealOutput = ([u8; SEAL_TAG_SIZE], [u8; EPHEMERAL_PK_SIZE], [u8; SEAL_CIPHERTEXT_SIZE]);
+pub type SealOutput = (
+    [u8; SEAL_TAG_SIZE],
+    [u8; EPHEMERAL_PK_SIZE],
+    [u8; SEAL_CIPHERTEXT_SIZE],
+);
 
 /// Domain byte for encryption key derivation (0x01 per spec).
 const SEAL_EK_DOMAIN_BYTE: u8 = 0x01;
@@ -160,8 +164,8 @@ pub fn unseal_k2k4(
     // Convert Ed25519 secret key to X25519 secret key
     // The Ed25519 secret key has format: [32-byte seed || 32-byte public key]
     // We use the seed to derive the X25519 secret
-    let ed_secret = SigningKey::from_keypair_bytes(recipient_sk)
-        .map_err(|_| PaserkError::InvalidKey)?;
+    let ed_secret =
+        SigningKey::from_keypair_bytes(recipient_sk).map_err(|_| PaserkError::InvalidKey)?;
 
     // Hash the Ed25519 seed to get the X25519 scalar (this is how dalek does it internally)
     let x25519_secret = StaticSecret::from(ed_secret.to_scalar_bytes());
@@ -241,7 +245,9 @@ mod tests {
 
         // Generate random seed bytes using our OsRng
         let mut seed = [0u8; 32];
-        OsRng.try_fill_bytes(&mut seed).map_err(|_| PaserkError::CryptoError)?;
+        OsRng
+            .try_fill_bytes(&mut seed)
+            .map_err(|_| PaserkError::CryptoError)?;
 
         // Create Ed25519 signing key from seed
         let signing_key = SigningKey::from_bytes(&seed);
@@ -263,18 +269,11 @@ mod tests {
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
-        let (tag, ephemeral_pk, ciphertext) =
-            seal_k2k4(&plaintext_key, &x25519_public, header)?;
+        let (tag, ephemeral_pk, ciphertext) = seal_k2k4(&plaintext_key, &x25519_public, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
-        let unsealed = unseal_k2k4(
-            &tag,
-            &ephemeral_pk,
-            &ciphertext,
-            &secret_key_bytes,
-            header,
-        )?;
+        let unsealed = unseal_k2k4(&tag, &ephemeral_pk, &ciphertext, &secret_key_bytes, header)?;
 
         assert_eq!(unsealed, plaintext_key);
         Ok(())
@@ -307,17 +306,10 @@ mod tests {
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
-        let (tag, ephemeral_pk, ciphertext) =
-            seal_k2k4(&plaintext_key, &x25519_public1, header)?;
+        let (tag, ephemeral_pk, ciphertext) = seal_k2k4(&plaintext_key, &x25519_public1, header)?;
 
         // Try to unseal with wrong key
-        let result = unseal_k2k4(
-            &tag,
-            &ephemeral_pk,
-            &ciphertext,
-            &secret_key2_bytes,
-            header,
-        );
+        let result = unseal_k2k4(&tag, &ephemeral_pk, &ciphertext, &secret_key2_bytes, header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
         Ok(())
@@ -336,13 +328,7 @@ mod tests {
 
         tag[0] ^= 0xff;
 
-        let result = unseal_k2k4(
-            &tag,
-            &ephemeral_pk,
-            &ciphertext,
-            &secret_key_bytes,
-            header,
-        );
+        let result = unseal_k2k4(&tag, &ephemeral_pk, &ciphertext, &secret_key_bytes, header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
         Ok(())

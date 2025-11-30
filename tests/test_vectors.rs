@@ -6,12 +6,36 @@
 // Test code legitimately uses panic patterns for test failure reporting
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 mod vectors;
 
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 use std::path::PathBuf;
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 use vectors::*;
 
 /// Get the path to the test vectors directory.
+#[cfg(any(
+    feature = "k1-insecure",
+    feature = "k2",
+    feature = "k3",
+    feature = "k4"
+))]
 fn vectors_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/vectors")
 }
@@ -52,12 +76,13 @@ mod k4_tests {
                 let key_bytes =
                     hex_decode(test.key.as_ref().expect("key required for success test"))
                         .expect("valid hex");
-                let paserk_str = test.paserk.as_ref().expect("paserk required for success test");
+                let paserk_str = test
+                    .paserk
+                    .as_ref()
+                    .expect("paserk required for success test");
 
                 // Test serialization
-                let key_array: [u8; 32] = key_bytes
-                    .try_into()
-                    .expect("key should be 32 bytes");
+                let key_array: [u8; 32] = key_bytes.try_into().expect("key should be 32 bytes");
                 let paserk = PaserkLocal::<K4>::from(key_array);
                 assert_eq!(
                     paserk.to_string(),
@@ -92,10 +117,12 @@ mod k4_tests {
                 continue;
             }
 
-            let key_bytes =
-                hex_decode(test.key.as_ref().expect("key required for success test"))
-                    .expect("valid hex");
-            let paserk_str = test.paserk.as_ref().expect("paserk required for success test");
+            let key_bytes = hex_decode(test.key.as_ref().expect("key required for success test"))
+                .expect("valid hex");
+            let paserk_str = test
+                .paserk
+                .as_ref()
+                .expect("paserk required for success test");
 
             let key_array: [u8; 32] = key_bytes.try_into().expect("key should be 32 bytes");
             let local_key = PaserkLocal::<K4>::from(key_array);
@@ -130,7 +157,10 @@ mod k4_tests {
                 let key_bytes =
                     hex_decode(test.key.as_ref().expect("key required for success test"))
                         .expect("valid hex");
-                let paserk_str = test.paserk.as_ref().expect("paserk required for success test");
+                let paserk_str = test
+                    .paserk
+                    .as_ref()
+                    .expect("paserk required for success test");
 
                 let key_array: [u8; 32] = key_bytes.try_into().expect("key should be 32 bytes");
                 let paserk = PaserkPublic::<K4>::from(key_array);
@@ -165,10 +195,12 @@ mod k4_tests {
                 continue;
             }
 
-            let key_bytes =
-                hex_decode(test.key.as_ref().expect("key required for success test"))
-                    .expect("valid hex");
-            let paserk_str = test.paserk.as_ref().expect("paserk required for success test");
+            let key_bytes = hex_decode(test.key.as_ref().expect("key required for success test"))
+                .expect("valid hex");
+            let paserk_str = test
+                .paserk
+                .as_ref()
+                .expect("paserk required for success test");
 
             let key_array: [u8; 32] = key_bytes.try_into().expect("key should be 32 bytes");
             let public_key = PaserkPublic::<K4>::from(key_array);
@@ -203,7 +235,10 @@ mod k4_tests {
                 let key_bytes =
                     hex_decode(test.key.as_ref().expect("key required for success test"))
                         .expect("valid hex");
-                let paserk_str = test.paserk.as_ref().expect("paserk required for success test");
+                let paserk_str = test
+                    .paserk
+                    .as_ref()
+                    .expect("paserk required for success test");
 
                 let key_array: [u8; 64] = key_bytes.try_into().expect("key should be 64 bytes");
                 let paserk = PaserkSecret::<K4>::from(key_array);
@@ -238,10 +273,12 @@ mod k4_tests {
                 continue;
             }
 
-            let key_bytes =
-                hex_decode(test.key.as_ref().expect("key required for success test"))
-                    .expect("valid hex");
-            let paserk_str = test.paserk.as_ref().expect("paserk required for success test");
+            let key_bytes = hex_decode(test.key.as_ref().expect("key required for success test"))
+                .expect("valid hex");
+            let paserk_str = test
+                .paserk
+                .as_ref()
+                .expect("paserk required for success test");
 
             let key_array: [u8; 64] = key_bytes.try_into().expect("key should be 64 bytes");
             let secret_key = PaserkSecret::<K4>::from(key_array);
@@ -266,12 +303,9 @@ mod k4_tests {
             if test.expect_fail {
                 // Test unwrapping should fail
                 let paserk_str = test.paserk.as_ref().expect("paserk required for fail test");
-                let wrapping_key_bytes = hex_decode(
-                    test.wrapping_key
-                        .as_ref()
-                        .expect("wrapping key required"),
-                )
-                .expect("valid hex");
+                let wrapping_key_bytes =
+                    hex_decode(test.wrapping_key.as_ref().expect("wrapping key required"))
+                        .expect("valid hex");
                 let wrapping_key: [u8; 32] = wrapping_key_bytes
                     .try_into()
                     .expect("wrapping key should be 32 bytes");
@@ -288,18 +322,12 @@ mod k4_tests {
                 }
             } else {
                 // Test wrapping roundtrip
-                let unwrapped_bytes = hex_decode(
-                    test.unwrapped
-                        .as_ref()
-                        .expect("unwrapped key required"),
-                )
-                .expect("valid hex");
-                let wrapping_key_bytes = hex_decode(
-                    test.wrapping_key
-                        .as_ref()
-                        .expect("wrapping key required"),
-                )
-                .expect("valid hex");
+                let unwrapped_bytes =
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped key required"))
+                        .expect("valid hex");
+                let wrapping_key_bytes =
+                    hex_decode(test.wrapping_key.as_ref().expect("wrapping key required"))
+                        .expect("valid hex");
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let unwrapped_key: [u8; 32] = unwrapped_bytes
@@ -338,12 +366,9 @@ mod k4_tests {
         for test in suite.tests {
             if test.expect_fail {
                 let paserk_str = test.paserk.as_ref().expect("paserk required for fail test");
-                let wrapping_key_bytes = hex_decode(
-                    test.wrapping_key
-                        .as_ref()
-                        .expect("wrapping key required"),
-                )
-                .expect("valid hex");
+                let wrapping_key_bytes =
+                    hex_decode(test.wrapping_key.as_ref().expect("wrapping key required"))
+                        .expect("valid hex");
                 let wrapping_key: [u8; 32] = wrapping_key_bytes
                     .try_into()
                     .expect("wrapping key should be 32 bytes");
@@ -359,18 +384,12 @@ mod k4_tests {
                     );
                 }
             } else {
-                let unwrapped_bytes = hex_decode(
-                    test.unwrapped
-                        .as_ref()
-                        .expect("unwrapped key required"),
-                )
-                .expect("valid hex");
-                let wrapping_key_bytes = hex_decode(
-                    test.wrapping_key
-                        .as_ref()
-                        .expect("wrapping key required"),
-                )
-                .expect("valid hex");
+                let unwrapped_bytes =
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped key required"))
+                        .expect("valid hex");
+                let wrapping_key_bytes =
+                    hex_decode(test.wrapping_key.as_ref().expect("wrapping key required"))
+                        .expect("valid hex");
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let unwrapped_key: [u8; 64] = unwrapped_bytes
@@ -412,11 +431,7 @@ mod k4_tests {
                 // For fail tests, the paserk might be for a wrong version (e.g., k3 instead of k4)
                 // In that case, parsing should fail, so we don't need params
                 let paserk_str = test.paserk.as_ref().expect("paserk required for fail test");
-                let password = decode_password(
-                    test.password
-                        .as_ref()
-                        .expect("password required"),
-                );
+                let password = decode_password(test.password.as_ref().expect("password required"));
 
                 let wrapped = PaserkLocalPw::<K4>::try_from(paserk_str.as_str());
                 if let Ok(wrapped) = wrapped {
@@ -424,9 +439,7 @@ mod k4_tests {
                     // Extract params if available, otherwise use defaults (will likely fail)
                     let options = test.options.as_ref();
                     let params = Argon2Params {
-                        memory_kib: options
-                            .and_then(|o| o.memlimit)
-                            .map_or(65536, |m| m / 1024),
+                        memory_kib: options.and_then(|o| o.memlimit).map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -446,17 +459,10 @@ mod k4_tests {
                     iterations: options.opslimit.expect("opslimit required"),
                     parallelism: 1,
                 };
-                let unwrapped_bytes = hex_decode(
-                    test.unwrapped
-                        .as_ref()
-                        .expect("unwrapped key required"),
-                )
-                .expect("valid hex");
-                let password = decode_password(
-                    test.password
-                        .as_ref()
-                        .expect("password required"),
-                );
+                let unwrapped_bytes =
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped key required"))
+                        .expect("valid hex");
+                let password = decode_password(test.password.as_ref().expect("password required"));
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let unwrapped_key: [u8; 32] = unwrapped_bytes
@@ -493,11 +499,7 @@ mod k4_tests {
                 // For fail tests, the paserk might be for a wrong version (e.g., k3 instead of k4)
                 // In that case, parsing should fail, so we don't need params
                 let paserk_str = test.paserk.as_ref().expect("paserk required for fail test");
-                let password = decode_password(
-                    test.password
-                        .as_ref()
-                        .expect("password required"),
-                );
+                let password = decode_password(test.password.as_ref().expect("password required"));
 
                 let wrapped = PaserkSecretPw::<K4>::try_from(paserk_str.as_str());
                 if let Ok(wrapped) = wrapped {
@@ -505,9 +507,7 @@ mod k4_tests {
                     // Extract params if available, otherwise use defaults (will likely fail)
                     let options = test.options.as_ref();
                     let params = Argon2Params {
-                        memory_kib: options
-                            .and_then(|o| o.memlimit)
-                            .map_or(65536, |m| m / 1024),
+                        memory_kib: options.and_then(|o| o.memlimit).map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -527,17 +527,10 @@ mod k4_tests {
                     iterations: options.opslimit.expect("opslimit required"),
                     parallelism: 1,
                 };
-                let unwrapped_bytes = hex_decode(
-                    test.unwrapped
-                        .as_ref()
-                        .expect("unwrapped key required"),
-                )
-                .expect("valid hex");
-                let password = decode_password(
-                    test.password
-                        .as_ref()
-                        .expect("password required"),
-                );
+                let unwrapped_bytes =
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped key required"))
+                        .expect("valid hex");
+                let password = decode_password(test.password.as_ref().expect("password required"));
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let unwrapped_key: [u8; 64] = unwrapped_bytes
@@ -597,12 +590,9 @@ mod k4_tests {
                         .expect("sealing secret key required"),
                 )
                 .expect("valid hex");
-                let unsealed_bytes = hex_decode(
-                    test.unsealed
-                        .as_ref()
-                        .expect("unsealed key required"),
-                )
-                .expect("valid hex");
+                let unsealed_bytes =
+                    hex_decode(test.unsealed.as_ref().expect("unsealed key required"))
+                        .expect("valid hex");
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let secret_key: [u8; 64] = secret_key_bytes
@@ -670,11 +660,21 @@ mod k2_tests {
                 let key_array: [u8; 32] = key_bytes.try_into().expect("32 bytes");
                 let paserk = PaserkLocal::<K2>::from(key_array);
 
-                assert_eq!(paserk.to_string(), *paserk_str, "Test '{}' failed", test.name);
+                assert_eq!(
+                    paserk.to_string(),
+                    *paserk_str,
+                    "Test '{}' failed",
+                    test.name
+                );
 
                 let parsed = PaserkLocal::<K2>::try_from(paserk_str.as_str())
                     .unwrap_or_else(|e| panic!("Test '{}' failed: {e}", test.name));
-                assert_eq!(parsed.as_bytes(), &key_array, "Test '{}' roundtrip failed", test.name);
+                assert_eq!(
+                    parsed.as_bytes(),
+                    &key_array,
+                    "Test '{}' roundtrip failed",
+                    test.name
+                );
             }
         }
     }
@@ -690,7 +690,8 @@ mod k2_tests {
                 continue;
             }
 
-            let key_bytes = hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
+            let key_bytes =
+                hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
             let paserk_str = test.paserk.as_ref().expect("paserk required");
 
             let key_array: [u8; 32] = key_bytes.try_into().expect("32 bytes");
@@ -714,17 +715,28 @@ mod k2_tests {
                     assert!(result.is_err(), "Test '{}' should have failed", test.name);
                 }
             } else {
-                let key_bytes = hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
+                let key_bytes =
+                    hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let key_array: [u8; 32] = key_bytes.try_into().expect("32 bytes");
                 let paserk = PaserkPublic::<K2>::from(key_array);
 
-                assert_eq!(paserk.to_string(), *paserk_str, "Test '{}' failed", test.name);
+                assert_eq!(
+                    paserk.to_string(),
+                    *paserk_str,
+                    "Test '{}' failed",
+                    test.name
+                );
 
                 let parsed = PaserkPublic::<K2>::try_from(paserk_str.as_str())
                     .unwrap_or_else(|e| panic!("Test '{}' failed: {e}", test.name));
-                assert_eq!(parsed.as_bytes(), &key_array, "Test '{}' roundtrip failed", test.name);
+                assert_eq!(
+                    parsed.as_bytes(),
+                    &key_array,
+                    "Test '{}' roundtrip failed",
+                    test.name
+                );
             }
         }
     }
@@ -740,7 +752,8 @@ mod k2_tests {
                 continue;
             }
 
-            let key_bytes = hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
+            let key_bytes =
+                hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
             let paserk_str = test.paserk.as_ref().expect("paserk required");
 
             let key_array: [u8; 32] = key_bytes.try_into().expect("32 bytes");
@@ -764,17 +777,28 @@ mod k2_tests {
                     assert!(result.is_err(), "Test '{}' should have failed", test.name);
                 }
             } else {
-                let key_bytes = hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
+                let key_bytes =
+                    hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let key_array: [u8; 64] = key_bytes.try_into().expect("64 bytes");
                 let paserk = PaserkSecret::<K2>::from(key_array);
 
-                assert_eq!(paserk.to_string(), *paserk_str, "Test '{}' failed", test.name);
+                assert_eq!(
+                    paserk.to_string(),
+                    *paserk_str,
+                    "Test '{}' failed",
+                    test.name
+                );
 
                 let parsed = PaserkSecret::<K2>::try_from(paserk_str.as_str())
                     .unwrap_or_else(|e| panic!("Test '{}' failed: {e}", test.name));
-                assert_eq!(parsed.as_bytes(), &key_array, "Test '{}' roundtrip failed", test.name);
+                assert_eq!(
+                    parsed.as_bytes(),
+                    &key_array,
+                    "Test '{}' roundtrip failed",
+                    test.name
+                );
             }
         }
     }
@@ -790,7 +814,8 @@ mod k2_tests {
                 continue;
             }
 
-            let key_bytes = hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
+            let key_bytes =
+                hex_decode(test.key.as_ref().expect("key required")).expect("valid hex");
             let paserk_str = test.paserk.as_ref().expect("paserk required");
 
             let key_array: [u8; 64] = key_bytes.try_into().expect("64 bytes");
@@ -823,7 +848,8 @@ mod k2_tests {
                 }
             } else {
                 let unwrapped_bytes =
-                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required")).expect("valid hex");
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required"))
+                        .expect("valid hex");
                 let wrapping_key_bytes =
                     hex_decode(test.wrapping_key.as_ref().expect("wrapping key required"))
                         .expect("valid hex");
@@ -841,7 +867,12 @@ mod k2_tests {
                     .try_unwrap(&wrapping_key)
                     .unwrap_or_else(|e| panic!("Test '{}' unwrap failed: {e}", test.name));
 
-                assert_eq!(recovered.as_bytes(), key_to_wrap.as_bytes(), "Test '{}' failed", test.name);
+                assert_eq!(
+                    recovered.as_bytes(),
+                    key_to_wrap.as_bytes(),
+                    "Test '{}' failed",
+                    test.name
+                );
             }
         }
     }
@@ -868,7 +899,8 @@ mod k2_tests {
                 }
             } else {
                 let unwrapped_bytes =
-                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required")).expect("valid hex");
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required"))
+                        .expect("valid hex");
                 let wrapping_key_bytes =
                     hex_decode(test.wrapping_key.as_ref().expect("wrapping key required"))
                         .expect("valid hex");
@@ -886,7 +918,12 @@ mod k2_tests {
                     .try_unwrap(&wrapping_key)
                     .unwrap_or_else(|e| panic!("Test '{}' unwrap failed: {e}", test.name));
 
-                assert_eq!(recovered.as_bytes(), key_to_wrap.as_bytes(), "Test '{}' failed", test.name);
+                assert_eq!(
+                    recovered.as_bytes(),
+                    key_to_wrap.as_bytes(),
+                    "Test '{}' failed",
+                    test.name
+                );
             }
         }
     }
@@ -911,9 +948,7 @@ mod k2_tests {
                     // Only try to unwrap if parsing succeeded
                     let options = test.options.as_ref();
                     let params = Argon2Params {
-                        memory_kib: options
-                            .and_then(|o| o.memlimit)
-                            .map_or(65536, |m| m / 1024),
+                        memory_kib: options.and_then(|o| o.memlimit).map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -929,7 +964,8 @@ mod k2_tests {
                     parallelism: 1,
                 };
                 let unwrapped_bytes =
-                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required")).expect("valid hex");
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required"))
+                        .expect("valid hex");
                 let password = decode_password(test.password.as_ref().expect("password required"));
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
@@ -942,7 +978,12 @@ mod k2_tests {
                     .try_unwrap(&password, params)
                     .unwrap_or_else(|e| panic!("Test '{}' unwrap failed: {e}", test.name));
 
-                assert_eq!(recovered.as_bytes(), expected_key.as_bytes(), "Test '{}' failed", test.name);
+                assert_eq!(
+                    recovered.as_bytes(),
+                    expected_key.as_bytes(),
+                    "Test '{}' failed",
+                    test.name
+                );
             }
         }
     }
@@ -967,9 +1008,7 @@ mod k2_tests {
                     // Only try to unwrap if parsing succeeded
                     let options = test.options.as_ref();
                     let params = Argon2Params {
-                        memory_kib: options
-                            .and_then(|o| o.memlimit)
-                            .map_or(65536, |m| m / 1024),
+                        memory_kib: options.and_then(|o| o.memlimit).map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -985,7 +1024,8 @@ mod k2_tests {
                     parallelism: 1,
                 };
                 let unwrapped_bytes =
-                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required")).expect("valid hex");
+                    hex_decode(test.unwrapped.as_ref().expect("unwrapped required"))
+                        .expect("valid hex");
                 let password = decode_password(test.password.as_ref().expect("password required"));
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
@@ -998,7 +1038,12 @@ mod k2_tests {
                     .try_unwrap(&password, params)
                     .unwrap_or_else(|e| panic!("Test '{}' unwrap failed: {e}", test.name));
 
-                assert_eq!(recovered.as_bytes(), expected_key.as_bytes(), "Test '{}' failed", test.name);
+                assert_eq!(
+                    recovered.as_bytes(),
+                    expected_key.as_bytes(),
+                    "Test '{}' failed",
+                    test.name
+                );
             }
         }
     }
@@ -1013,7 +1058,9 @@ mod k2_tests {
             if test.expect_fail {
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
                 let secret_key_bytes = hex_decode(
-                    test.sealing_secret_key.as_ref().expect("sealing secret key required"),
+                    test.sealing_secret_key
+                        .as_ref()
+                        .expect("sealing secret key required"),
                 )
                 .expect("valid hex");
                 let secret_key: [u8; 64] = secret_key_bytes.try_into().expect("64 bytes");
@@ -1026,11 +1073,13 @@ mod k2_tests {
                 }
             } else {
                 let secret_key_bytes = hex_decode(
-                    test.sealing_secret_key.as_ref().expect("sealing secret key required"),
+                    test.sealing_secret_key
+                        .as_ref()
+                        .expect("sealing secret key required"),
                 )
                 .expect("valid hex");
-                let unsealed_bytes =
-                    hex_decode(test.unsealed.as_ref().expect("unsealed required")).expect("valid hex");
+                let unsealed_bytes = hex_decode(test.unsealed.as_ref().expect("unsealed required"))
+                    .expect("valid hex");
                 let paserk_str = test.paserk.as_ref().expect("paserk required");
 
                 let secret_key: [u8; 64] = secret_key_bytes.try_into().expect("64 bytes");
@@ -1045,7 +1094,12 @@ mod k2_tests {
                     .try_unseal(&secret_key)
                     .unwrap_or_else(|e| panic!("Test '{}' unseal failed: {e}", test.name));
 
-                assert_eq!(recovered.as_bytes(), expected_key.as_bytes(), "Test '{}' failed", test.name);
+                assert_eq!(
+                    recovered.as_bytes(),
+                    expected_key.as_bytes(),
+                    "Test '{}' failed",
+                    test.name
+                );
             }
         }
     }

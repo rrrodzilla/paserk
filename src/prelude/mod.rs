@@ -72,7 +72,7 @@ pub use crate::core::types::{
     PaserkSeal, PaserkSecret, PaserkSecretId, PaserkSecretPw, PaserkSecretWrap,
 };
 #[allow(deprecated)]
-pub use crate::core::version::{K1, K2, K3, K4, PaserkVersion};
+pub use crate::core::version::{PaserkVersion, K1, K2, K3, K4};
 
 // Re-export PBKW parameters
 #[cfg(any(feature = "k2", feature = "k4"))]

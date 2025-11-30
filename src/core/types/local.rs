@@ -285,10 +285,12 @@ mod tests {
 
     #[test]
     fn test_invalid_header() {
-        let result = PaserkLocal::<K4>::try_from("k2.local.cHFyc3R1dnd4eXp7fH1-f4CBgoOEhYaHiImKi4yNjo8");
+        let result =
+            PaserkLocal::<K4>::try_from("k2.local.cHFyc3R1dnd4eXp7fH1-f4CBgoOEhYaHiImKi4yNjo8");
         assert!(matches!(result, Err(PaserkError::InvalidVersion)));
 
-        let result = PaserkLocal::<K4>::try_from("k4.public.cHFyc3R1dnd4eXp7fH1-f4CBgoOEhYaHiImKi4yNjo8");
+        let result =
+            PaserkLocal::<K4>::try_from("k4.public.cHFyc3R1dnd4eXp7fH1-f4CBgoOEhYaHiImKi4yNjo8");
         assert!(matches!(result, Err(PaserkError::InvalidHeader)));
     }
 
