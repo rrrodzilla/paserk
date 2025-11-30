@@ -9,13 +9,6 @@ exclude-dev = true
 # Advisories - Check for known security vulnerabilities
 # ============================================================================
 [advisories]
-db-path = "~/.cargo/advisory-db"
-db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
-
 # Known advisories that we explicitly accept
 # RUSTSEC-2023-0071: RSA Marvin Attack - we document this and require explicit opt-in
 ignore = [
