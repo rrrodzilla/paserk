@@ -21,7 +21,7 @@ pub const K3_SEAL_TAG_SIZE: usize = 48;
 pub const K3_SEAL_DATA_SIZE: usize = K3_EPHEMERAL_PK_SIZE + K3_SEAL_CIPHERTEXT_SIZE + K3_SEAL_TAG_SIZE;
 
 /// Output type for seal operation: (`ephemeral_pk`, ciphertext, tag).
-pub(crate) type K3SealOutput = ([u8; K3_EPHEMERAL_PK_SIZE], [u8; K3_SEAL_CIPHERTEXT_SIZE], [u8; K3_SEAL_TAG_SIZE]);
+pub type K3SealOutput = ([u8; K3_EPHEMERAL_PK_SIZE], [u8; K3_SEAL_CIPHERTEXT_SIZE], [u8; K3_SEAL_TAG_SIZE]);
 
 /// Domain separation for seal encryption key derivation.
 const SEAL_EK_DOMAIN: &[u8] = b"paserk.seal.k3";
@@ -239,7 +239,7 @@ mod tests {
 
     /// Helper function to generate a P-384 keypair for testing.
     #[cfg(feature = "k3")]
-    fn generate_test_keypair() -> PaserkResult<([u8; 48], [u8; K3_EPHEMERAL_PK_SIZE])> {
+    fn generate_test_keypair() -> ([u8; 48], [u8; K3_EPHEMERAL_PK_SIZE]) {
         use p384::elliptic_curve::rand_core::OsRng as P384OsRng;
         use p384::elliptic_curve::sec1::ToEncodedPoint;
         use p384::SecretKey;
@@ -255,13 +255,13 @@ mod tests {
         let mut pk = [0u8; K3_EPHEMERAL_PK_SIZE];
         pk.copy_from_slice(public_point.as_bytes());
 
-        Ok((sk, pk))
+        (sk, pk)
     }
 
     #[test]
     #[cfg(feature = "k3")]
     fn test_seal_unseal_roundtrip() -> PaserkResult<()> {
-        let (secret_key, public_key) = generate_test_keypair()?;
+        let (secret_key, public_key) = generate_test_keypair();
 
         let plaintext_key = [0x42u8; 32];
         let header = "k3.seal.";
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     #[cfg(feature = "k3")]
     fn test_seal_produces_different_output() -> PaserkResult<()> {
-        let (_, public_key) = generate_test_keypair()?;
+        let (_, public_key) = generate_test_keypair();
 
         let plaintext_key = [0x42u8; 32];
         let header = "k3.seal.";
@@ -297,8 +297,8 @@ mod tests {
     #[test]
     #[cfg(feature = "k3")]
     fn test_unseal_wrong_key() -> PaserkResult<()> {
-        let (_, public_key1) = generate_test_keypair()?;
-        let (secret_key2, _) = generate_test_keypair()?;
+        let (_, public_key1) = generate_test_keypair();
+        let (secret_key2, _) = generate_test_keypair();
 
         let plaintext_key = [0x42u8; 32];
         let header = "k3.seal.";
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     #[cfg(feature = "k3")]
     fn test_unseal_modified_tag() -> PaserkResult<()> {
-        let (secret_key, public_key) = generate_test_keypair()?;
+        let (secret_key, public_key) = generate_test_keypair();
 
         let plaintext_key = [0x42u8; 32];
         let header = "k3.seal.";
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     #[cfg(feature = "k3")]
     fn test_ephemeral_pk_size() -> PaserkResult<()> {
-        let (_, public_key) = generate_test_keypair()?;
+        let (_, public_key) = generate_test_keypair();
 
         let plaintext_key = [0x42u8; 32];
         let header = "k3.seal.";

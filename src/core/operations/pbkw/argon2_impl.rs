@@ -17,7 +17,7 @@ pub const XCHACHA20_NONCE_SIZE: usize = 24;
 pub const PBKW_TAG_SIZE: usize = 32;
 
 /// Output type for local (32-byte) key wrapping: (salt, nonce, ciphertext, tag).
-pub(crate) type PbkwLocalOutput = (
+pub type PbkwLocalOutput = (
     [u8; ARGON2_SALT_SIZE],
     [u8; XCHACHA20_NONCE_SIZE],
     [u8; 32],
@@ -25,7 +25,7 @@ pub(crate) type PbkwLocalOutput = (
 );
 
 /// Output type for secret (64-byte) key wrapping: (salt, nonce, ciphertext, tag).
-pub(crate) type PbkwSecretOutput = (
+pub type PbkwSecretOutput = (
     [u8; ARGON2_SALT_SIZE],
     [u8; XCHACHA20_NONCE_SIZE],
     [u8; 64],
@@ -538,7 +538,7 @@ mod tests {
         let tag: [u8; PBKW_TAG_SIZE] = data[88..120].try_into().unwrap();
 
         let params = Argon2Params {
-            memory_kib: (memlimit_bytes / 1024) as u32,
+            memory_kib: u32::try_from(memlimit_bytes / 1024).map_err(|_| PaserkError::InvalidKey)?,
             iterations: opslimit,
             parallelism,
         };

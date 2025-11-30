@@ -84,7 +84,7 @@ impl<V: PaserkVersion> PaserkSecretPw<V> {
     }
 
     /// Creates a new `PaserkSecretPw` from raw data bytes.
-    fn from_data(data: Vec<u8>) -> Self {
+    const fn from_data(data: Vec<u8>) -> Self {
         Self {
             data,
             _version: PhantomData,
@@ -109,7 +109,7 @@ impl<V: PaserkVersion> PaserkSecretPw<V> {
 
     /// Returns the expected data size for this version.
     #[must_use]
-    fn data_size() -> usize {
+    const fn data_size() -> usize {
         let key_size = Self::expected_key_size();
         match V::VERSION {
             // K2/K4: salt(16) + memlimit(8) + opslimit(4) + parallelism(4) + nonce(24) + ciphertext(64) + tag(32) = 152
@@ -123,7 +123,7 @@ impl<V: PaserkVersion> PaserkSecretPw<V> {
 
     /// Returns (`salt_size`, `params_size`, `nonce_size`) based on version.
     #[must_use]
-    fn sizes_for_version() -> (usize, usize, usize) {
+    const fn sizes_for_version() -> (usize, usize, usize) {
         match V::VERSION {
             // K1/K3: salt(32) + iterations(4) + nonce(16)
             1 | 3 => (32, 4, 16),
@@ -134,7 +134,7 @@ impl<V: PaserkVersion> PaserkSecretPw<V> {
 
     /// Returns the expected secret key size for this version.
     #[must_use]
-    fn expected_key_size() -> usize {
+    const fn expected_key_size() -> usize {
         match V::VERSION {
             2 | 4 => 64, // Ed25519 secret key
             3 => 48,     // P-384 secret key

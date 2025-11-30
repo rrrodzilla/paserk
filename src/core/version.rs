@@ -242,17 +242,22 @@ mod tests {
 
     #[test]
     fn test_default() {
-        let _k1: K1 = K1;
-        let _k2: K2 = K2;
-        let _k3: K3 = K3;
-        let _k4: K4 = K4;
+        let k1: K1 = K1;
+        let k2: K2 = K2;
+        let k3: K3 = K3;
+        let k4: K4 = K4;
+        assert_eq!(k1, K1);
+        assert_eq!(k2, K2);
+        assert_eq!(k3, K3);
+        assert_eq!(k4, K4);
     }
 
     #[test]
     fn test_copy_clone() {
         let k4 = K4;
         let k4_clone = k4;
-        let _k4_copy = k4;
+        let k4_copy = k4;
         assert_eq!(k4_clone, K4);
+        assert_eq!(k4_copy, K4);
     }
 }

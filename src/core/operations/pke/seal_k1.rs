@@ -21,7 +21,7 @@ pub const K1_SEAL_TAG_SIZE: usize = 48;
 pub const K1_SEAL_DATA_SIZE: usize = K1_SEAL_TAG_SIZE + K1_SEAL_CIPHERTEXT_SIZE + K1_RSA_CIPHERTEXT_SIZE;
 
 /// Output type for seal operation: (tag, `encrypted_data_key`, `rsa_ciphertext`).
-pub(crate) type K1SealOutput = (
+pub type K1SealOutput = (
     [u8; K1_SEAL_TAG_SIZE],
     [u8; K1_SEAL_CIPHERTEXT_SIZE],
     [u8; K1_RSA_CIPHERTEXT_SIZE],

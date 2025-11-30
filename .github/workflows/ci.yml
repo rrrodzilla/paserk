@@ -60,7 +60,7 @@ jobs:
       - name: Test (no default features)
         run: cargo test --no-default-features
       - name: Test (K1 only)
-        run: cargo test --no-default-features --features k1
+        run: cargo test --no-default-features --features k1-insecure
       - name: Test (K2 only)
         run: cargo test --no-default-features --features k2
       - name: Test (K3 only)

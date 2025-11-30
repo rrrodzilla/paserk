@@ -15,7 +15,7 @@ pub const AES_CTR_NONCE_SIZE: usize = 16;
 pub const PBKW_K1K3_TAG_SIZE: usize = 48;
 
 /// Output type for local (32-byte) key wrapping: (salt, nonce, ciphertext, tag).
-pub(crate) type PbkwLocalOutputK1K3 = (
+pub type PbkwLocalOutputK1K3 = (
     [u8; PBKDF2_SALT_SIZE],
     [u8; AES_CTR_NONCE_SIZE],
     [u8; 32],
@@ -24,7 +24,7 @@ pub(crate) type PbkwLocalOutputK1K3 = (
 
 /// Output type for secret key wrapping: (salt, nonce, ciphertext, tag).
 /// K1 uses RSA keys (variable size), K3 uses P-384 keys (48 bytes).
-pub(crate) type PbkwSecretOutputK3 = (
+pub type PbkwSecretOutputK3 = (
     [u8; PBKDF2_SALT_SIZE],
     [u8; AES_CTR_NONCE_SIZE],
     [u8; 48],

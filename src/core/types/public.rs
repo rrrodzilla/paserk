@@ -78,7 +78,7 @@ impl<V: PaserkVersion> PaserkPublic<V> {
     ///
     /// This does not validate the key format. Use the `TryFrom` implementations
     /// for validated parsing.
-    fn from_bytes_unchecked(key: Vec<u8>) -> Self {
+    const fn from_bytes_unchecked(key: Vec<u8>) -> Self {
         Self {
             key,
             _version: PhantomData,

@@ -101,7 +101,7 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     ///
     /// For K1: `ephemeral_pk_or_rsa_ct` is the RSA ciphertext.
     /// For K2/K3/K4: `ephemeral_pk_or_rsa_ct` is the ephemeral public key.
-    fn new(ephemeral_pk_or_rsa_ct: Vec<u8>, ciphertext: Vec<u8>, tag: Vec<u8>) -> Self {
+    const fn new(ephemeral_pk_or_rsa_ct: Vec<u8>, ciphertext: Vec<u8>, tag: Vec<u8>) -> Self {
         Self {
             ephemeral_pk_or_rsa_ct,
             ciphertext,
@@ -137,7 +137,7 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     }
 
     /// Returns the expected ephemeral public key size (K2/K3/K4) or RSA ciphertext size (K1).
-    fn expected_ephemeral_pk_size() -> usize {
+    const fn expected_ephemeral_pk_size() -> usize {
         match V::VERSION {
             1 => 512, // RSA-4096 ciphertext
             3 => 49,  // P-384 compressed SEC1
@@ -146,7 +146,7 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     }
 
     /// Returns the expected tag size for this version.
-    fn expected_tag_size() -> usize {
+    const fn expected_tag_size() -> usize {
         match V::VERSION {
             1 | 3 => 48, // HMAC-SHA384
             _ => 32,     // BLAKE2b (K2, K4)
@@ -154,7 +154,7 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     }
 
     /// Total serialized data size.
-    fn data_size() -> usize {
+    const fn data_size() -> usize {
         Self::expected_ephemeral_pk_size() + 32 + Self::expected_tag_size()
     }
 }
@@ -485,14 +485,14 @@ impl<V: PaserkVersion> Display for PaserkSeal<V> {
             self.ephemeral_pk_or_rsa_ct.len() + self.ciphertext.len() + self.tag.len(),
         );
 
+        // All formats start with tag
         // K1 format: tag || edk || c
         // K2/K3/K4 format: tag || ephemeral_pk || ciphertext (per PASERK spec)
+        data.extend_from_slice(&self.tag);
         if V::VERSION == 1 {
-            data.extend_from_slice(&self.tag);
             data.extend_from_slice(&self.ciphertext);
             data.extend_from_slice(&self.ephemeral_pk_or_rsa_ct);
         } else {
-            data.extend_from_slice(&self.tag);
             data.extend_from_slice(&self.ephemeral_pk_or_rsa_ct);
             data.extend_from_slice(&self.ciphertext);
         }
@@ -560,18 +560,18 @@ impl<V: PaserkVersion> TryFrom<&str> for PaserkSeal<V> {
         let ciphertext_size = 32;
         let tag_size = Self::expected_tag_size();
 
+        // All formats start with tag
         // K1 format: tag || edk || c
         // K2/K3/K4 format: tag || ephemeral_pk || ciphertext (per PASERK spec)
-        let (ephemeral_pk_or_rsa_ct, ciphertext, tag) = if V::VERSION == 1 {
-            let tag = data[..tag_size].to_vec();
+        let tag = data[..tag_size].to_vec();
+        let (ephemeral_pk_or_rsa_ct, ciphertext) = if V::VERSION == 1 {
             let ciphertext = data[tag_size..tag_size + ciphertext_size].to_vec();
             let rsa_ct = data[tag_size + ciphertext_size..].to_vec();
-            (rsa_ct, ciphertext, tag)
+            (rsa_ct, ciphertext)
         } else {
-            let tag = data[..tag_size].to_vec();
             let ephemeral_pk = data[tag_size..tag_size + ephemeral_pk_size].to_vec();
             let ciphertext = data[tag_size + ephemeral_pk_size..].to_vec();
-            (ephemeral_pk, ciphertext, tag)
+            (ephemeral_pk, ciphertext)
         };
 
         Ok(Self::new(ephemeral_pk_or_rsa_ct, ciphertext, tag))
@@ -615,7 +615,7 @@ mod tests {
     use super::*;
     use crate::core::version::K4;
 
-    /// Helper function to generate a PaserkSecret for testing.
+    /// Helper function to generate a `PaserkSecret` for testing.
     #[cfg(feature = "k4")]
     fn generate_test_secret() -> PaserkResult<PaserkSecret<K4>> {
         use ed25519_dalek::SigningKey;
@@ -730,7 +730,7 @@ mod tests {
     }
 
     #[cfg(feature = "k3")]
-    fn generate_k3_test_secret() -> PaserkResult<PaserkSecret<crate::core::version::K3>> {
+    fn generate_k3_test_secret() -> PaserkSecret<crate::core::version::K3> {
         use p384::elliptic_curve::rand_core::OsRng as P384OsRng;
         use p384::SecretKey;
 
@@ -739,7 +739,7 @@ mod tests {
         let mut sk = [0u8; 48];
         sk.copy_from_slice(&secret_bytes);
 
-        Ok(PaserkSecret::<crate::core::version::K3>::from(sk))
+        PaserkSecret::<crate::core::version::K3>::from(sk)
     }
 
     #[test]
@@ -747,7 +747,7 @@ mod tests {
     fn test_k3_seal_unseal_roundtrip() -> PaserkResult<()> {
         use crate::core::version::K3;
 
-        let secret_key = generate_k3_test_secret()?;
+        let secret_key = generate_k3_test_secret();
         let local_key = PaserkLocal::<K3>::from([0x42u8; 32]);
 
         let sealed = PaserkSeal::<K3>::try_seal(&local_key, &secret_key)?;
@@ -763,7 +763,7 @@ mod tests {
     fn test_k3_serialize_parse_roundtrip() -> PaserkResult<()> {
         use crate::core::version::K3;
 
-        let secret_key = generate_k3_test_secret()?;
+        let secret_key = generate_k3_test_secret();
         let local_key = PaserkLocal::<K3>::from([0x42u8; 32]);
 
         let sealed = PaserkSeal::<K3>::try_seal(&local_key, &secret_key)?;
@@ -786,8 +786,8 @@ mod tests {
     fn test_k3_unseal_wrong_key() -> PaserkResult<()> {
         use crate::core::version::K3;
 
-        let secret_key1 = generate_k3_test_secret()?;
-        let secret_key2 = generate_k3_test_secret()?;
+        let secret_key1 = generate_k3_test_secret();
+        let secret_key2 = generate_k3_test_secret();
 
         let local_key = PaserkLocal::<K3>::from([0x42u8; 32]);
 
@@ -803,7 +803,7 @@ mod tests {
     fn test_k3_ephemeral_pk_size() -> PaserkResult<()> {
         use crate::core::version::K3;
 
-        let secret_key = generate_k3_test_secret()?;
+        let secret_key = generate_k3_test_secret();
         let local_key = PaserkLocal::<K3>::from([0x42u8; 32]);
 
         let sealed = PaserkSeal::<K3>::try_seal(&local_key, &secret_key)?;
@@ -818,7 +818,7 @@ mod tests {
     fn test_k3_tag_size() -> PaserkResult<()> {
         use crate::core::version::K3;
 
-        let secret_key = generate_k3_test_secret()?;
+        let secret_key = generate_k3_test_secret();
         let local_key = PaserkLocal::<K3>::from([0x42u8; 32]);
 
         let sealed = PaserkSeal::<K3>::try_seal(&local_key, &secret_key)?;

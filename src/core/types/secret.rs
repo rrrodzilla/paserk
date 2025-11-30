@@ -89,7 +89,7 @@ impl<V: PaserkVersion> PaserkSecret<V> {
     ///
     /// This does not validate the key format. Use the `TryFrom` implementations
     /// for validated parsing.
-    fn from_bytes_unchecked(key: Vec<u8>) -> Self {
+    const fn from_bytes_unchecked(key: Vec<u8>) -> Self {
         Self {
             key,
             _version: PhantomData,
@@ -207,12 +207,23 @@ impl<V: PaserkVersion> TryFrom<String> for PaserkSecret<V> {
 
 impl<V: PaserkVersion> PartialEq for PaserkSecret<V> {
     fn eq(&self, other: &Self) -> bool {
-        use subtle::ConstantTimeEq;
-        // Handle different lengths
-        if self.key.len() != other.key.len() {
-            return false;
-        }
-        self.key.ct_eq(&other.key).into()
+        use subtle::{Choice, ConstantTimeEq};
+
+        // Perform fully constant-time comparison that doesn't leak length information.
+        // While key lengths are determined by version (public), we maintain constant-time
+        // behavior throughout for defense in depth.
+        let len_a = self.key.len();
+        let len_b = other.key.len();
+
+        // Start with checking if lengths are equal (constant-time via ct_eq on usize)
+        let lengths_equal: Choice = len_a.ct_eq(&len_b);
+
+        // Compare byte-by-byte in constant time
+        // ct_eq handles different lengths by returning Choice(0)
+        let bytes_equal: Choice = self.key.ct_eq(&other.key);
+
+        // Both conditions must be true
+        (lengths_equal & bytes_equal).into()
     }
 }
 

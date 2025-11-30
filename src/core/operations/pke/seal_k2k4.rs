@@ -23,7 +23,7 @@ const SEAL_NONCE_SIZE: usize = 24;
 pub const SEAL_DATA_SIZE: usize = SEAL_TAG_SIZE + EPHEMERAL_PK_SIZE + SEAL_CIPHERTEXT_SIZE;
 
 /// Output type for seal operation: (tag, `ephemeral_pk`, ciphertext) - per spec order.
-pub(crate) type SealOutput = ([u8; SEAL_TAG_SIZE], [u8; EPHEMERAL_PK_SIZE], [u8; SEAL_CIPHERTEXT_SIZE]);
+pub type SealOutput = ([u8; SEAL_TAG_SIZE], [u8; EPHEMERAL_PK_SIZE], [u8; SEAL_CIPHERTEXT_SIZE]);
 
 /// Domain byte for encryption key derivation (0x01 per spec).
 const SEAL_EK_DOMAIN_BYTE: u8 = 0x01;
@@ -232,7 +232,7 @@ mod tests {
     use super::*;
 
     /// Helper function to generate an Ed25519 keypair for testing.
-    /// Uses our rand_core 0.9 OsRng to avoid version conflicts.
+    /// Uses our `rand_core` 0.9 `OsRng` to avoid version conflicts.
     #[cfg(feature = "k4")]
     fn generate_test_keypair() -> PaserkResult<(ed25519_dalek::SigningKey, [u8; 64], [u8; 32])> {
         use ed25519_dalek::SigningKey;

@@ -86,7 +86,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
     }
 
     /// Creates a new `PaserkLocalWrap` from raw components.
-    fn new(nonce: [u8; PIE_WRAP_NONCE_SIZE], ciphertext: [u8; 32], tag: Vec<u8>) -> Self {
+    const fn new(nonce: [u8; PIE_WRAP_NONCE_SIZE], ciphertext: [u8; 32], tag: Vec<u8>) -> Self {
         Self {
             nonce,
             ciphertext,
@@ -115,7 +115,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
     }
 
     /// Returns the expected tag size for this version.
-    fn expected_tag_size() -> usize {
+    const fn expected_tag_size() -> usize {
         match V::VERSION {
             1 | 3 => 48,           // 48 bytes - HMAC-SHA384
             _ => PIE_TAG_SIZE,     // 32 bytes - BLAKE2b (K2, K4)

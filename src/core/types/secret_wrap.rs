@@ -81,7 +81,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkSecretWrap<V, P> {
     }
 
     /// Creates a new `PaserkSecretWrap` from raw components.
-    fn new(nonce: [u8; PIE_WRAP_NONCE_SIZE], ciphertext: Vec<u8>, tag: Vec<u8>) -> Self {
+    const fn new(nonce: [u8; PIE_WRAP_NONCE_SIZE], ciphertext: Vec<u8>, tag: Vec<u8>) -> Self {
         Self {
             nonce,
             ciphertext,
@@ -110,7 +110,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkSecretWrap<V, P> {
     }
 
     /// Returns the expected secret key size for this version.
-    fn expected_key_size() -> usize {
+    const fn expected_key_size() -> usize {
         match V::VERSION {
             2 | 4 => 64, // Ed25519 secret key
             3 => 48,     // P-384 secret key
@@ -119,7 +119,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkSecretWrap<V, P> {
     }
 
     /// Returns the expected tag size for this version.
-    fn expected_tag_size() -> usize {
+    const fn expected_tag_size() -> usize {
         match V::VERSION {
             1 | 3 => 48,       // 48 bytes - HMAC-SHA384
             _ => PIE_TAG_SIZE, // 32 bytes - BLAKE2b (K2, K4)

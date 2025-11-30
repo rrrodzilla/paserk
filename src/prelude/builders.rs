@@ -89,7 +89,7 @@ impl<V: PaserkVersion> LocalPwBuilder<V> {
     ///
     /// Equivalent to calling `LocalPwBuilder::moderate()`.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self::moderate()
     }
 
@@ -301,7 +301,7 @@ impl<V: PaserkVersion> SecretPwBuilder<V> {
     ///
     /// Equivalent to calling `SecretPwBuilder::moderate()`.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self::moderate()
     }
 

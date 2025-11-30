@@ -426,8 +426,7 @@ mod k4_tests {
                     let params = Argon2Params {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
-                            .map(|m| m / 1024)
-                            .unwrap_or(65536), // fallback
+                            .map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -508,8 +507,7 @@ mod k4_tests {
                     let params = Argon2Params {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
-                            .map(|m| m / 1024)
-                            .unwrap_or(65536), // fallback
+                            .map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -915,8 +913,7 @@ mod k2_tests {
                     let params = Argon2Params {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
-                            .map(|m| m / 1024)
-                            .unwrap_or(65536),
+                            .map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -972,8 +969,7 @@ mod k2_tests {
                     let params = Argon2Params {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
-                            .map(|m| m / 1024)
-                            .unwrap_or(65536),
+                            .map_or(65536, |m| m / 1024),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };

@@ -42,14 +42,16 @@ mod tests {
 
     #[test]
     fn test_pie_default() {
-        let _pie: Pie = Pie;
+        let pie: Pie = Pie;
+        assert_eq!(pie, Pie);
     }
 
     #[test]
     fn test_pie_clone_copy() {
         let pie = Pie;
         let pie_clone = pie;
-        let _pie_copy = pie;
+        let pie_copy = pie;
         assert_eq!(pie_clone, Pie);
+        assert_eq!(pie_copy, Pie);
     }
 }

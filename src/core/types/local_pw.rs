@@ -84,7 +84,7 @@ impl<V: PaserkVersion> PaserkLocalPw<V> {
     }
 
     /// Creates a new `PaserkLocalPw` from raw data bytes.
-    fn from_data(data: Vec<u8>) -> Self {
+    const fn from_data(data: Vec<u8>) -> Self {
         Self {
             data,
             _version: PhantomData,
@@ -108,7 +108,7 @@ impl<V: PaserkVersion> PaserkLocalPw<V> {
 
     /// Returns the expected data size for this version.
     #[must_use]
-    fn data_size() -> usize {
+    const fn data_size() -> usize {
         match V::VERSION {
             // K2/K4: salt(16) + memlimit(8) + opslimit(4) + parallelism(4) + nonce(24) + ciphertext(32) + tag(32) = 120
             2 | 4 => 16 + 8 + 4 + 4 + 24 + 32 + 32,
@@ -119,7 +119,7 @@ impl<V: PaserkVersion> PaserkLocalPw<V> {
 
     /// Returns (`salt_size`, `params_size`, `nonce_size`) based on version.
     #[must_use]
-    fn sizes_for_version() -> (usize, usize, usize) {
+    const fn sizes_for_version() -> (usize, usize, usize) {
         match V::VERSION {
             // K1/K3: salt(32) + iterations(4) + nonce(16)
             1 | 3 => (32, 4, 16),
