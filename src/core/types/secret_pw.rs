@@ -3,7 +3,8 @@
 //! This module provides the `PaserkSecretPw` type for storing secret (signing) keys
 //! that have been encrypted with a password using PBKW.
 //!
-//! Format: `k{version}.secret-pw.{base64url(salt || nonce || ciphertext || tag)}`
+//! Format for K2/K4: `k{version}.secret-pw.{base64url(salt || memlimit_BE64 || opslimit_BE32 || parallelism_BE32 || nonce || ciphertext || tag)}`
+//! Format for K1/K3: `k{version}.secret-pw.{base64url(salt || iterations_BE32 || nonce || ciphertext || tag)}`
 
 use core::fmt::{self, Debug, Display};
 use core::marker::PhantomData;
@@ -62,10 +63,10 @@ use crate::core::types::PaserkSecret;
 /// ```
 #[derive(Clone)]
 pub struct PaserkSecretPw<V: PaserkVersion> {
-    /// The raw serialized data (salt || nonce || ciphertext || tag).
+    /// The raw serialized data including embedded params.
     /// Size varies by version:
-    /// - K2/K4: 16 + 24 + 64 + 32 = 136 bytes
-    /// - K3: 32 + 16 + 48 + 48 = 144 bytes
+    /// - K2/K4: salt(16) + memlimit(8) + opslimit(4) + parallelism(4) + nonce(24) + ciphertext(64) + tag(32) = 152 bytes
+    /// - K3: salt(32) + iterations(4) + nonce(16) + ciphertext(48) + tag(48) = 148 bytes
     data: Vec<u8>,
 
     /// Version marker.
@@ -99,37 +100,35 @@ impl<V: PaserkVersion> PaserkSecretPw<V> {
     /// Returns a reference to the ciphertext bytes.
     #[must_use]
     pub fn ciphertext(&self) -> &[u8] {
-        // Ciphertext is positioned after salt + nonce
-        let (salt_size, nonce_size) = Self::sizes_for_version();
+        // Ciphertext is positioned after salt + params + nonce
+        let (salt_size, params_size, nonce_size) = Self::sizes_for_version();
         let key_size = Self::expected_key_size();
-        let offset = salt_size + nonce_size;
+        let offset = salt_size + params_size + nonce_size;
         &self.data[offset..offset + key_size]
     }
 
     /// Returns the expected data size for this version.
     #[must_use]
     fn data_size() -> usize {
-        let (salt_size, nonce_size) = Self::sizes_for_version();
         let key_size = Self::expected_key_size();
-        let tag_size = Self::tag_size_for_version();
-        salt_size + nonce_size + key_size + tag_size
-    }
-
-    /// Returns (salt_size, nonce_size) based on version.
-    #[must_use]
-    fn sizes_for_version() -> (usize, usize) {
         match V::VERSION {
-            1 | 3 => (32, 16), // K1/K3: PBKDF2 salt (32) + AES-CTR nonce (16)
-            _ => (16, 24),     // K2/K4: Argon2 salt (16) + XChaCha20 nonce (24)
+            // K2/K4: salt(16) + memlimit(8) + opslimit(4) + parallelism(4) + nonce(24) + ciphertext(64) + tag(32) = 152
+            2 | 4 => 16 + 8 + 4 + 4 + 24 + key_size + 32,
+            // K3: salt(32) + iterations(4) + nonce(16) + ciphertext(48) + tag(48) = 148
+            3 => 32 + 4 + 16 + key_size + 48,
+            // K1: Not supported
+            _ => 0,
         }
     }
 
-    /// Returns the tag size based on version.
+    /// Returns (salt_size, params_size, nonce_size) based on version.
     #[must_use]
-    fn tag_size_for_version() -> usize {
+    fn sizes_for_version() -> (usize, usize, usize) {
         match V::VERSION {
-            1 | 3 => 48, // K1/K3: HMAC-SHA384 (48 bytes)
-            _ => 32,     // K2/K4: BLAKE2b-MAC (32 bytes)
+            // K1/K3: salt(32) + iterations(4) + nonce(16)
+            1 | 3 => (32, 4, 16),
+            // K2/K4: salt(16) + memlimit(8)+opslimit(4)+parallelism(4)=16 + nonce(24)
+            _ => (16, 16, 24),
         }
     }
 
@@ -185,9 +184,13 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkSecretPw<V> {
         let (salt, nonce, ciphertext, tag) =
             pbkw_wrap_secret_k2k4(&plaintext, password, &params, &header)?;
 
-        // Concatenate: salt || nonce || ciphertext || tag
-        let mut data = Vec::with_capacity(ARGON2_SALT_SIZE + XCHACHA20_NONCE_SIZE + 64 + PBKW_TAG_SIZE);
+        // Concatenate: salt || memlimit_BE64 || opslimit_BE32 || parallelism_BE32 || nonce || ciphertext || tag
+        let memlimit_bytes = (params.memory_kib as u64) * 1024;
+        let mut data = Vec::with_capacity(ARGON2_SALT_SIZE + 8 + 4 + 4 + XCHACHA20_NONCE_SIZE + 64 + PBKW_TAG_SIZE);
         data.extend_from_slice(&salt);
+        data.extend_from_slice(&memlimit_bytes.to_be_bytes());
+        data.extend_from_slice(&params.iterations.to_be_bytes());
+        data.extend_from_slice(&params.parallelism.to_be_bytes());
         data.extend_from_slice(&nonce);
         data.extend_from_slice(&ciphertext);
         data.extend_from_slice(&tag);
@@ -200,7 +203,7 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkSecretPw<V> {
     /// # Arguments
     ///
     /// * `password` - The password used for wrapping
-    /// * `params` - Argon2id parameters (must match those used for wrapping)
+    /// * `_params` - Ignored; the Argon2id parameters are extracted from the serialized data
     ///
     /// # Returns
     ///
@@ -212,13 +215,13 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkSecretPw<V> {
     pub fn try_unwrap(
         &self,
         password: &[u8],
-        params: Argon2Params,
+        _params: Argon2Params,
     ) -> PaserkResult<PaserkSecret<V>> {
         use crate::core::operations::pbkw::pbkw_unwrap_secret_k2k4;
 
         let header = Self::header();
 
-        // Parse components from data
+        // Parse components from data: salt || memlimit_BE64 || opslimit_BE32 || parallelism_BE32 || nonce || ciphertext || tag
         let mut salt = [0u8; ARGON2_SALT_SIZE];
         let mut nonce = [0u8; XCHACHA20_NONCE_SIZE];
         let mut ciphertext = [0u8; 64];
@@ -227,6 +230,23 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkSecretPw<V> {
         let mut offset = 0;
         salt.copy_from_slice(&self.data[offset..offset + ARGON2_SALT_SIZE]);
         offset += ARGON2_SALT_SIZE;
+
+        // Extract embedded Argon2 parameters
+        let memlimit_bytes = u64::from_be_bytes(self.data[offset..offset + 8].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        offset += 8;
+        let opslimit = u32::from_be_bytes(self.data[offset..offset + 4].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        offset += 4;
+        let parallelism = u32::from_be_bytes(self.data[offset..offset + 4].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        offset += 4;
+
+        // Convert memlimit from bytes to KiB
+        let memory_kib = (memlimit_bytes / 1024) as u32;
+        let params = Argon2Params {
+            memory_kib,
+            iterations: opslimit,
+            parallelism,
+        };
+
         nonce.copy_from_slice(&self.data[offset..offset + XCHACHA20_NONCE_SIZE]);
         offset += XCHACHA20_NONCE_SIZE;
         ciphertext.copy_from_slice(&self.data[offset..offset + 64]);
@@ -287,9 +307,10 @@ impl PaserkSecretPw<crate::core::version::K3> {
         let (salt, nonce, ciphertext, tag) =
             pbkw_wrap_secret_k3(&plaintext, password, &params, &header)?;
 
-        // Concatenate: salt || nonce || ciphertext || tag
-        let mut data = Vec::with_capacity(PBKDF2_SALT_SIZE + AES_CTR_NONCE_SIZE + 48 + PBKW_K1K3_TAG_SIZE);
+        // Concatenate: salt || iterations_BE32 || nonce || ciphertext || tag
+        let mut data = Vec::with_capacity(PBKDF2_SALT_SIZE + 4 + AES_CTR_NONCE_SIZE + 48 + PBKW_K1K3_TAG_SIZE);
         data.extend_from_slice(&salt);
+        data.extend_from_slice(&params.iterations.to_be_bytes());
         data.extend_from_slice(&nonce);
         data.extend_from_slice(&ciphertext);
         data.extend_from_slice(&tag);
@@ -302,7 +323,7 @@ impl PaserkSecretPw<crate::core::version::K3> {
     /// # Arguments
     ///
     /// * `password` - The password used for wrapping
-    /// * `params` - PBKDF2 parameters (must match those used for wrapping)
+    /// * `_params` - Ignored; the PBKDF2 parameters are extracted from the serialized data
     ///
     /// # Returns
     ///
@@ -314,13 +335,13 @@ impl PaserkSecretPw<crate::core::version::K3> {
     pub fn try_unwrap_pbkdf2(
         &self,
         password: &[u8],
-        params: Pbkdf2Params,
+        _params: Pbkdf2Params,
     ) -> PaserkResult<PaserkSecret<crate::core::version::K3>> {
         use crate::core::operations::pbkw::pbkw_unwrap_secret_k3;
 
         let header = Self::header();
 
-        // Parse components from data
+        // Parse components from data: salt || iterations_BE32 || nonce || ciphertext || tag
         let mut salt = [0u8; PBKDF2_SALT_SIZE];
         let mut nonce = [0u8; AES_CTR_NONCE_SIZE];
         let mut ciphertext = [0u8; 48];
@@ -329,6 +350,12 @@ impl PaserkSecretPw<crate::core::version::K3> {
         let mut offset = 0;
         salt.copy_from_slice(&self.data[offset..offset + PBKDF2_SALT_SIZE]);
         offset += PBKDF2_SALT_SIZE;
+
+        // Extract embedded PBKDF2 iterations
+        let iterations = u32::from_be_bytes(self.data[offset..offset + 4].try_into().map_err(|_| PaserkError::InvalidKey)?);
+        offset += 4;
+        let params = Pbkdf2Params { iterations };
+
         nonce.copy_from_slice(&self.data[offset..offset + AES_CTR_NONCE_SIZE]);
         offset += AES_CTR_NONCE_SIZE;
         ciphertext.copy_from_slice(&self.data[offset..offset + 48]);

@@ -3,7 +3,7 @@
 //! This module provides the `PaserkSecretWrap` type for storing secret (signing) keys
 //! that have been encrypted with a symmetric key using a wrap protocol.
 //!
-//! Format: `k{version}.secret-wrap.{protocol}.{base64url(nonce || ciphertext || tag)}`
+//! Format: `k{version}.secret-wrap.{protocol}.{base64url(tag || nonce || ciphertext)}`
 
 use core::fmt::{self, Debug, Display};
 use core::marker::PhantomData;
@@ -315,11 +315,11 @@ impl PaserkSecretWrap<crate::core::version::K3, Pie> {
 
 impl<V: PaserkVersion, P: WrapProtocol> Display for PaserkSecretWrap<V, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Concatenate nonce || ciphertext || tag
-        let mut data = Vec::with_capacity(PIE_WRAP_NONCE_SIZE + self.ciphertext.len() + self.tag.len());
+        // Concatenate tag || nonce || ciphertext (per PASERK spec)
+        let mut data = Vec::with_capacity(self.tag.len() + PIE_WRAP_NONCE_SIZE + self.ciphertext.len());
+        data.extend_from_slice(&self.tag);
         data.extend_from_slice(&self.nonce);
         data.extend_from_slice(&self.ciphertext);
-        data.extend_from_slice(&self.tag);
 
         let encoded = BASE64_URL_SAFE_NO_PAD.encode(&data);
         write!(f, "{}{}", Self::header(), encoded)
@@ -385,15 +385,18 @@ impl<V: PaserkVersion, P: WrapProtocol> TryFrom<&str> for PaserkSecretWrap<V, P>
 
         let expected_key_size = Self::expected_key_size();
         let expected_tag_size = Self::expected_tag_size();
-        let expected_len = PIE_NONCE_SIZE + expected_key_size + expected_tag_size;
+        let expected_len = expected_tag_size + PIE_NONCE_SIZE + expected_key_size;
         if data.len() != expected_len {
             return Err(PaserkError::InvalidKey);
         }
 
+        // Parse tag || nonce || ciphertext (per PASERK spec)
+        let tag = data[..expected_tag_size].to_vec();
+
         let mut nonce = [0u8; PIE_NONCE_SIZE];
-        nonce.copy_from_slice(&data[..PIE_NONCE_SIZE]);
-        let ciphertext = data[PIE_NONCE_SIZE..PIE_NONCE_SIZE + expected_key_size].to_vec();
-        let tag = data[PIE_NONCE_SIZE + expected_key_size..].to_vec();
+        nonce.copy_from_slice(&data[expected_tag_size..expected_tag_size + PIE_NONCE_SIZE]);
+
+        let ciphertext = data[expected_tag_size + PIE_NONCE_SIZE..].to_vec();
 
         Ok(Self::new(nonce, ciphertext, tag))
     }

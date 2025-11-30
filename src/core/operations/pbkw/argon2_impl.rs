@@ -8,7 +8,9 @@ use crate::core::error::{PaserkError, PaserkResult};
 /// Salt size for Argon2id (16 bytes).
 pub const ARGON2_SALT_SIZE: usize = 16;
 
-/// Nonce size for XChaCha20 (24 bytes).
+/// Nonce size for PBKW (24 bytes).
+/// This nonce is used as input to the KDF, and the XChaCha20 nonce (also 24 bytes)
+/// is derived from the KDF output.
 pub const XCHACHA20_NONCE_SIZE: usize = 24;
 
 /// Tag size for BLAKE2b-MAC (32 bytes).
@@ -30,11 +32,11 @@ pub(crate) type PbkwSecretOutput = (
     [u8; PBKW_TAG_SIZE],
 );
 
-/// Domain separation for PBKW encryption key derivation.
-const PBKW_EK_DOMAIN: &[u8] = b"paserk-wrap.pie-local";
+/// Domain separation byte for encryption key derivation (0xFF per PBKW spec).
+const PBKW_ENCRYPTION_KEY_DOMAIN: u8 = 0xFF;
 
-/// Domain separation for PBKW authentication key derivation.
-const PBKW_AK_SUFFIX: &[u8] = b"auth-key-for-tag";
+/// Domain separation byte for authentication key derivation (0xFE per PBKW spec).
+const PBKW_AUTH_KEY_DOMAIN: u8 = 0xFE;
 
 /// Default Argon2id parameters.
 #[derive(Debug, Clone, Copy)]
@@ -115,14 +117,14 @@ pub fn pbkw_wrap_local_k2k4(
 ) -> PaserkResult<PbkwLocalOutput> {
     use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
     use blake2::digest::{FixedOutput, KeyInit, Update};
-    use blake2::Blake2bMac;
+    use blake2::{Blake2b, Blake2bMac};
     use chacha20::cipher::{KeyIvInit, StreamCipher};
     use chacha20::XChaCha20;
     use rand_core::{OsRng, TryRngCore};
 
     // Generate random salt and nonce
     let mut salt = [0u8; ARGON2_SALT_SIZE];
-    let mut nonce = [0u8; XCHACHA20_NONCE_SIZE];
+    let mut nonce = [0u8; XCHACHA20_NONCE_SIZE]; // 24 bytes for XChaCha20
     OsRng
         .try_fill_bytes(&mut salt)
         .map_err(|_| PaserkError::CryptoError)?;
@@ -140,36 +142,42 @@ pub fn pbkw_wrap_local_k2k4(
 
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, argon2_params);
 
-    // Derive pre-shared key
+    // Derive pre-shared key from password: k = Argon2id(pw, s, mem, time, para)
     let mut psk = [0u8; 32];
     argon2
         .hash_password_into(password, &salt, &mut psk)
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
-    // Derive encryption key: Ek = BLAKE2b-MAC(psk, "paserk-wrap.pie-local", 32)
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
-    let mut ek_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ek_mac, PBKW_EK_DOMAIN);
-    let encryption_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ek_mac).into();
+    // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    let mut ek_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
+    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
-    // Derive authentication key: Ak = BLAKE2b-MAC(psk, "paserk-wrap.pie-local" || "auth-key-for-tag", 32)
-    let mut ak_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_EK_DOMAIN);
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_AK_SUFFIX);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ak_mac).into();
+    // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
+    let mut ak_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
+    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
 
-    // Encrypt the plaintext key
+    // Encrypt the plaintext key: edk = XChaCha20(msg=ptk, key=Ek, nonce=n)
+    // Note: nonce is used DIRECTLY, not derived
     let mut ciphertext = *plaintext_key;
     let mut cipher = XChaCha20::new(&encryption_key.into(), &nonce.into());
     cipher.apply_keystream(&mut ciphertext);
 
-    // Compute authentication tag: tag = BLAKE2b-MAC(Ak, header || salt || nonce || ciphertext, 32)
+    // Compute authentication tag:
+    // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
+    let memlimit_bytes = (params.memory_kib as u64) * 1024;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, &salt);
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.iterations.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.parallelism.to_be_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, &nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &ciphertext);
     let tag: [u8; PBKW_TAG_SIZE] = <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
@@ -204,7 +212,7 @@ pub fn pbkw_unwrap_local_k2k4(
 ) -> PaserkResult<[u8; 32]> {
     use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
     use blake2::digest::{FixedOutput, KeyInit, Update};
-    use blake2::Blake2bMac;
+    use blake2::{Blake2b, Blake2bMac};
     use chacha20::cipher::{KeyIvInit, StreamCipher};
     use chacha20::XChaCha20;
     use subtle::ConstantTimeEq;
@@ -219,38 +227,44 @@ pub fn pbkw_unwrap_local_k2k4(
 
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, argon2_params);
 
-    // Derive pre-shared key
+    // Derive pre-shared key from password: k = Argon2id(pw, s, mem, time, para)
     let mut psk = [0u8; 32];
     argon2
         .hash_password_into(password, salt, &mut psk)
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
-    // Derive encryption key
+    // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    let mut ek_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
+    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
+
+    // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
+    let mut ak_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
+    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+
+    // Verify authentication tag:
+    // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
+    let memlimit_bytes = (params.memory_kib as u64) * 1024;
     type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
-    let mut ek_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ek_mac, PBKW_EK_DOMAIN);
-    let encryption_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ek_mac).into();
-
-    // Derive authentication key
-    let mut ak_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_EK_DOMAIN);
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_AK_SUFFIX);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ak_mac).into();
-
-    // Verify authentication tag
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, salt);
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.iterations.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.parallelism.to_be_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, ciphertext);
     let computed_tag: [u8; PBKW_TAG_SIZE] =
         <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
 
     if computed_tag.ct_eq(tag).into() {
-        // Decrypt the ciphertext
+        // Decrypt the ciphertext: ptk = XChaCha20(edk, Ek, n)
+        // Note: nonce is used DIRECTLY, not derived
         let mut plaintext = *ciphertext;
         let mut cipher = XChaCha20::new(&encryption_key.into(), nonce.into());
         cipher.apply_keystream(&mut plaintext);
@@ -262,6 +276,17 @@ pub fn pbkw_unwrap_local_k2k4(
 }
 
 /// Wraps a secret (signing) key using PBKW for K2/K4.
+///
+/// # Arguments
+///
+/// * `plaintext_key` - The 64-byte key to wrap
+/// * `password` - The password to use for wrapping
+/// * `params` - Argon2id parameters
+/// * `header` - The PASERK header (e.g., "k4.secret-pw.")
+///
+/// # Returns
+///
+/// A tuple of (salt, nonce, ciphertext, tag).
 #[cfg(any(feature = "k2", feature = "k4"))]
 pub fn pbkw_wrap_secret_k2k4(
     plaintext_key: &[u8; 64],
@@ -271,14 +296,14 @@ pub fn pbkw_wrap_secret_k2k4(
 ) -> PaserkResult<PbkwSecretOutput> {
     use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
     use blake2::digest::{FixedOutput, KeyInit, Update};
-    use blake2::Blake2bMac;
+    use blake2::{Blake2b, Blake2bMac};
     use chacha20::cipher::{KeyIvInit, StreamCipher};
     use chacha20::XChaCha20;
     use rand_core::{OsRng, TryRngCore};
 
     // Generate random salt and nonce
     let mut salt = [0u8; ARGON2_SALT_SIZE];
-    let mut nonce = [0u8; XCHACHA20_NONCE_SIZE];
+    let mut nonce = [0u8; XCHACHA20_NONCE_SIZE]; // 24 bytes for XChaCha20
     OsRng
         .try_fill_bytes(&mut salt)
         .map_err(|_| PaserkError::CryptoError)?;
@@ -296,39 +321,42 @@ pub fn pbkw_wrap_secret_k2k4(
 
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, argon2_params);
 
-    // Derive pre-shared key
+    // Derive pre-shared key from password: k = Argon2id(pw, s, mem, time, para)
     let mut psk = [0u8; 32];
     argon2
         .hash_password_into(password, &salt, &mut psk)
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
-    // Use "paserk-wrap.pie-secret" for secret key wrapping
-    const PBKW_SECRET_DOMAIN: &[u8] = b"paserk-wrap.pie-secret";
+    // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    let mut ek_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
+    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
-    // Derive encryption key
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
-    let mut ek_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ek_mac, PBKW_SECRET_DOMAIN);
-    let encryption_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ek_mac).into();
+    // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
+    let mut ak_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
+    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
 
-    // Derive authentication key
-    let mut ak_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_SECRET_DOMAIN);
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_AK_SUFFIX);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ak_mac).into();
-
-    // Encrypt the plaintext key
+    // Encrypt the plaintext key: edk = XChaCha20(msg=ptk, key=Ek, nonce=n)
+    // Note: nonce is used DIRECTLY, not derived
     let mut ciphertext = *plaintext_key;
     let mut cipher = XChaCha20::new(&encryption_key.into(), &nonce.into());
     cipher.apply_keystream(&mut ciphertext);
 
-    // Compute authentication tag
+    // Compute authentication tag:
+    // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
+    let memlimit_bytes = (params.memory_kib as u64) * 1024;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, &salt);
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.iterations.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.parallelism.to_be_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, &nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &ciphertext);
     let tag: [u8; PBKW_TAG_SIZE] = <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
@@ -337,6 +365,20 @@ pub fn pbkw_wrap_secret_k2k4(
 }
 
 /// Unwraps a secret (signing) key using PBKW for K2/K4.
+///
+/// # Arguments
+///
+/// * `salt` - The 16-byte Argon2 salt
+/// * `nonce` - The 24-byte XChaCha20 nonce
+/// * `ciphertext` - The 64-byte encrypted key
+/// * `tag` - The 32-byte authentication tag
+/// * `password` - The password used for wrapping
+/// * `params` - Argon2id parameters (must match those used for wrapping)
+/// * `header` - The PASERK header (e.g., "k4.secret-pw.")
+///
+/// # Returns
+///
+/// The unwrapped 64-byte plaintext key.
 #[cfg(any(feature = "k2", feature = "k4"))]
 pub fn pbkw_unwrap_secret_k2k4(
     salt: &[u8; ARGON2_SALT_SIZE],
@@ -349,7 +391,7 @@ pub fn pbkw_unwrap_secret_k2k4(
 ) -> PaserkResult<[u8; 64]> {
     use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
     use blake2::digest::{FixedOutput, KeyInit, Update};
-    use blake2::Blake2bMac;
+    use blake2::{Blake2b, Blake2bMac};
     use chacha20::cipher::{KeyIvInit, StreamCipher};
     use chacha20::XChaCha20;
     use subtle::ConstantTimeEq;
@@ -364,40 +406,44 @@ pub fn pbkw_unwrap_secret_k2k4(
 
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, argon2_params);
 
-    // Derive pre-shared key
+    // Derive pre-shared key from password: k = Argon2id(pw, s, mem, time, para)
     let mut psk = [0u8; 32];
     argon2
         .hash_password_into(password, salt, &mut psk)
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
-    const PBKW_SECRET_DOMAIN: &[u8] = b"paserk-wrap.pie-secret";
+    // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    let mut ek_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
+    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
-    // Derive encryption key
+    // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
+    let mut ak_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
+    <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
+    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+
+    // Verify authentication tag:
+    // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
+    let memlimit_bytes = (params.memory_kib as u64) * 1024;
     type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
-    let mut ek_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ek_mac, PBKW_SECRET_DOMAIN);
-    let encryption_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ek_mac).into();
-
-    // Derive authentication key
-    let mut ak_mac =
-        <Blake2bMac32 as KeyInit>::new_from_slice(&psk).map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_SECRET_DOMAIN);
-    <Blake2bMac32 as Update>::update(&mut ak_mac, PBKW_AK_SUFFIX);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ak_mac).into();
-
-    // Verify authentication tag
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, salt);
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &memlimit_bytes.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.iterations.to_be_bytes());
+    <Blake2bMac32 as Update>::update(&mut tag_mac, &params.parallelism.to_be_bytes());
     <Blake2bMac32 as Update>::update(&mut tag_mac, nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, ciphertext);
     let computed_tag: [u8; PBKW_TAG_SIZE] =
         <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
 
     if computed_tag.ct_eq(tag).into() {
-        // Decrypt the ciphertext
+        // Decrypt the ciphertext: ptk = XChaCha20(edk, Ek, n)
+        // Note: nonce is used DIRECTLY, not derived
         let mut plaintext = *ciphertext;
         let mut cipher = XChaCha20::new(&encryption_key.into(), nonce.into());
         cipher.apply_keystream(&mut plaintext);
@@ -419,6 +465,43 @@ mod tests {
             iterations: 1,
             parallelism: 1,
         }
+    }
+
+    #[test]
+    #[cfg(feature = "k4")]
+    fn test_pbkw_unwrap_k4_local_pw_vector() -> PaserkResult<()> {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+        // Test vector k4.local-pw-1
+        // The password field is used as-is (not hex-decoded)
+        let paserk = "k4.local-pw.9VvzoqE_i23NOqsP9xoijQAAAAAEAAAAAAAAAgAAAAG_uxDZC-NsYyOW8OUOqISJqgHN8xIfAXiPfmFTfB4GPidUzm4aKzMGJmZtRPeyZCV11MxEJS3VMIRHXxYsfUQsmWLALpFwqUhxZdk_ymFcK2Nk0-N7CVp-";
+        let header = "k4.local-pw.";
+        let password = b"636f727265637420686f727365206261747465727920737461706c65";
+        let expected_key = hex::decode("707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f").unwrap();
+
+        // Decode the data part
+        let data_b64 = paserk.strip_prefix(header).unwrap();
+        let data = URL_SAFE_NO_PAD.decode(data_b64).unwrap();
+
+        // Parse components
+        let salt: [u8; ARGON2_SALT_SIZE] = data[0..16].try_into().unwrap();
+        let memlimit_bytes = u64::from_be_bytes(data[16..24].try_into().unwrap());
+        let opslimit = u32::from_be_bytes(data[24..28].try_into().unwrap());
+        let parallelism = u32::from_be_bytes(data[28..32].try_into().unwrap());
+        let nonce: [u8; XCHACHA20_NONCE_SIZE] = data[32..56].try_into().unwrap();
+        let ciphertext: [u8; 32] = data[56..88].try_into().unwrap();
+        let tag: [u8; PBKW_TAG_SIZE] = data[88..120].try_into().unwrap();
+
+        let params = Argon2Params {
+            memory_kib: (memlimit_bytes / 1024) as u32,
+            iterations: opslimit,
+            parallelism,
+        };
+
+        let unwrapped = pbkw_unwrap_local_k2k4(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
+
+        assert_eq!(unwrapped.as_slice(), expected_key.as_slice());
+        Ok(())
     }
 
     #[test]

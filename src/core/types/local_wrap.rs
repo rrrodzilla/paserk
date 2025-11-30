@@ -3,7 +3,7 @@
 //! This module provides the `PaserkLocalWrap` type for storing symmetric keys
 //! that have been encrypted with another symmetric key using a wrap protocol.
 //!
-//! Format: `k{version}.local-wrap.{protocol}.{base64url(nonce || ciphertext || tag)}`
+//! Format: `k{version}.local-wrap.{protocol}.{base64url(tag || nonce || ciphertext)}`
 
 use core::fmt::{self, Debug, Display};
 use core::marker::PhantomData;
@@ -314,11 +314,11 @@ impl PaserkLocalWrap<crate::core::version::K3, Pie> {
 
 impl<V: PaserkVersion, P: WrapProtocol> Display for PaserkLocalWrap<V, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Concatenate nonce || ciphertext || tag
-        let mut data = Vec::with_capacity(PIE_WRAP_NONCE_SIZE + 32 + self.tag.len());
+        // Concatenate tag || nonce || ciphertext (per PASERK spec)
+        let mut data = Vec::with_capacity(self.tag.len() + PIE_WRAP_NONCE_SIZE + 32);
+        data.extend_from_slice(&self.tag);
         data.extend_from_slice(&self.nonce);
         data.extend_from_slice(&self.ciphertext);
-        data.extend_from_slice(&self.tag);
 
         let encoded = BASE64_URL_SAFE_NO_PAD.encode(&data);
         write!(f, "{}{}", Self::header(), encoded)
@@ -383,17 +383,19 @@ impl<V: PaserkVersion, P: WrapProtocol> TryFrom<&str> for PaserkLocalWrap<V, P> 
             .map_err(PaserkError::Base64Decode)?;
 
         let tag_size = Self::expected_tag_size();
-        let expected_len = PIE_WRAP_NONCE_SIZE + 32 + tag_size;
+        let expected_len = tag_size + PIE_WRAP_NONCE_SIZE + 32;
         if data.len() != expected_len {
             return Err(PaserkError::InvalidKey);
         }
 
-        let mut nonce = [0u8; PIE_WRAP_NONCE_SIZE];
-        let mut ciphertext = [0u8; 32];
+        // Parse tag || nonce || ciphertext (per PASERK spec)
+        let tag = data[..tag_size].to_vec();
 
-        nonce.copy_from_slice(&data[..PIE_WRAP_NONCE_SIZE]);
-        ciphertext.copy_from_slice(&data[PIE_WRAP_NONCE_SIZE..PIE_WRAP_NONCE_SIZE + 32]);
-        let tag = data[PIE_WRAP_NONCE_SIZE + 32..].to_vec();
+        let mut nonce = [0u8; PIE_WRAP_NONCE_SIZE];
+        nonce.copy_from_slice(&data[tag_size..tag_size + PIE_WRAP_NONCE_SIZE]);
+
+        let mut ciphertext = [0u8; 32];
+        ciphertext.copy_from_slice(&data[tag_size + PIE_WRAP_NONCE_SIZE..]);
 
         Ok(Self::new(nonce, ciphertext, tag))
     }

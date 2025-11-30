@@ -243,8 +243,10 @@ impl PaserkSeal<crate::core::version::K2> {
         let x25519_public: [u8; 32] = PublicKey::from(&x25519_secret).to_bytes();
 
         let header = Self::header();
-        let (ephemeral_pk, ciphertext, tag) = seal_k2k4(key.as_bytes(), &x25519_public, &header)?;
+        // seal_k2k4 returns (tag, ephemeral_pk, ciphertext)
+        let (tag, ephemeral_pk, ciphertext) = seal_k2k4(key.as_bytes(), &x25519_public, &header)?;
 
+        // Store in the order needed for serialization: (epk, ciphertext, tag)
         Ok(Self::new(
             ephemeral_pk.to_vec(),
             ciphertext.to_vec(),
@@ -280,7 +282,8 @@ impl PaserkSeal<crate::core::version::K2> {
         tag.copy_from_slice(&self.tag);
 
         let header = Self::header();
-        let plaintext = unseal_k2k4(&ephemeral_pk, &ciphertext, &tag, secret_bytes, &header)?;
+        // unseal_k2k4 expects (tag, ephemeral_pk, ciphertext)
+        let plaintext = unseal_k2k4(&tag, &ephemeral_pk, &ciphertext, secret_bytes, &header)?;
 
         Ok(PaserkLocal::from(plaintext))
     }
@@ -313,8 +316,10 @@ impl PaserkSeal<crate::core::version::K4> {
         let x25519_public: [u8; 32] = PublicKey::from(&x25519_secret).to_bytes();
 
         let header = Self::header();
-        let (ephemeral_pk, ciphertext, tag) = seal_k2k4(key.as_bytes(), &x25519_public, &header)?;
+        // seal_k2k4 returns (tag, ephemeral_pk, ciphertext)
+        let (tag, ephemeral_pk, ciphertext) = seal_k2k4(key.as_bytes(), &x25519_public, &header)?;
 
+        // Store in the order needed for serialization: (epk, ciphertext, tag)
         Ok(Self::new(
             ephemeral_pk.to_vec(),
             ciphertext.to_vec(),
@@ -350,7 +355,8 @@ impl PaserkSeal<crate::core::version::K4> {
         tag.copy_from_slice(&self.tag);
 
         let header = Self::header();
-        let plaintext = unseal_k2k4(&ephemeral_pk, &ciphertext, &tag, secret_bytes, &header)?;
+        // unseal_k2k4 expects (tag, ephemeral_pk, ciphertext)
+        let plaintext = unseal_k2k4(&tag, &ephemeral_pk, &ciphertext, secret_bytes, &header)?;
 
         Ok(PaserkLocal::from(plaintext))
     }
@@ -449,15 +455,15 @@ impl<V: PaserkVersion> Display for PaserkSeal<V> {
         );
 
         // K1 format: tag || edk || c
-        // Other versions: ephemeral_pk || ciphertext || tag
+        // K2/K3/K4 format: tag || ephemeral_pk || ciphertext (per PASERK spec)
         if V::VERSION == 1 {
             data.extend_from_slice(&self.tag);
             data.extend_from_slice(&self.ciphertext);
             data.extend_from_slice(&self.ephemeral_pk_or_rsa_ct);
         } else {
+            data.extend_from_slice(&self.tag);
             data.extend_from_slice(&self.ephemeral_pk_or_rsa_ct);
             data.extend_from_slice(&self.ciphertext);
-            data.extend_from_slice(&self.tag);
         }
 
         let encoded = BASE64_URL_SAFE_NO_PAD.encode(&data);
@@ -524,16 +530,16 @@ impl<V: PaserkVersion> TryFrom<&str> for PaserkSeal<V> {
         let tag_size = Self::expected_tag_size();
 
         // K1 format: tag || edk || c
-        // Other versions: ephemeral_pk || ciphertext || tag
+        // K2/K3/K4 format: tag || ephemeral_pk || ciphertext (per PASERK spec)
         let (ephemeral_pk_or_rsa_ct, ciphertext, tag) = if V::VERSION == 1 {
             let tag = data[..tag_size].to_vec();
             let ciphertext = data[tag_size..tag_size + ciphertext_size].to_vec();
             let rsa_ct = data[tag_size + ciphertext_size..].to_vec();
             (rsa_ct, ciphertext, tag)
         } else {
-            let ephemeral_pk = data[..ephemeral_pk_size].to_vec();
-            let ciphertext = data[ephemeral_pk_size..ephemeral_pk_size + ciphertext_size].to_vec();
-            let tag = data[ephemeral_pk_size + ciphertext_size..].to_vec();
+            let tag = data[..tag_size].to_vec();
+            let ephemeral_pk = data[tag_size..tag_size + ephemeral_pk_size].to_vec();
+            let ciphertext = data[tag_size + ephemeral_pk_size..].to_vec();
             (ephemeral_pk, ciphertext, tag)
         };
 

@@ -12,11 +12,11 @@ pub const PIE_NONCE_SIZE: usize = 32;
 /// Tag size for PIE protocol (32 bytes).
 pub const PIE_TAG_SIZE: usize = 32;
 
-/// Domain separation string for PIE KDF.
-const PIE_KDF_DOMAIN: &[u8] = b"paserk-wrap.pie.";
+/// Domain separation byte for PIE encryption key derivation (0x80).
+const PIE_ENCRYPTION_KEY_DOMAIN: u8 = 0x80;
 
-/// Domain separation string for PIE authentication key derivation.
-const PIE_AUTH_KEY_DOMAIN: &[u8] = b"auth-key-for-tag";
+/// Domain separation byte for PIE authentication key derivation (0x81).
+const PIE_AUTH_KEY_DOMAIN: u8 = 0x81;
 
 /// Wraps a local (symmetric) key using the PIE protocol for K2/K4.
 ///
@@ -51,11 +51,12 @@ pub fn pie_wrap_local_k2k4(
         .map_err(|_| PaserkError::CryptoError)?;
 
     // Derive encryption key and XChaCha20 nonce
-    // tmp = BLAKE2b-MAC(key=wrapping_key, msg="paserk-wrap.pie." || nonce, len=56)
+    // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
+    // Ek = x[0:32], n2 = x[32:56]
     type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac56 as Update>::update(&mut kdf_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
     <Blake2bMac56 as Update>::update(&mut kdf_mac, &nonce);
     let tmp = <Blake2bMac56 as FixedOutput>::finalize_fixed(kdf_mac);
 
@@ -66,13 +67,12 @@ pub fn pie_wrap_local_k2k4(
     xchacha_nonce.copy_from_slice(&tmp[32..56]);
 
     // Derive authentication key
-    // Ak = BLAKE2b-MAC(key=wrapping_key, msg="paserk-wrap.pie." || nonce || "auth-key-for-tag", len=32)
+    // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
     type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, &nonce);
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_AUTH_KEY_DOMAIN);
     let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Encrypt the plaintext key
@@ -121,10 +121,11 @@ pub fn pie_unwrap_local_k2k4(
     use subtle::ConstantTimeEq;
 
     // Derive encryption key and XChaCha20 nonce
+    // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
     type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac56 as Update>::update(&mut kdf_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
     <Blake2bMac56 as Update>::update(&mut kdf_mac, nonce);
     let tmp = <Blake2bMac56 as FixedOutput>::finalize_fixed(kdf_mac);
 
@@ -135,12 +136,12 @@ pub fn pie_unwrap_local_k2k4(
     xchacha_nonce.copy_from_slice(&tmp[32..56]);
 
     // Derive authentication key
+    // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
     type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, nonce);
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_AUTH_KEY_DOMAIN);
     let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Verify authentication tag
@@ -199,10 +200,11 @@ pub fn pie_wrap_secret_k2k4(
         .map_err(|_| PaserkError::CryptoError)?;
 
     // Derive encryption key and XChaCha20 nonce
+    // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
     type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac56 as Update>::update(&mut kdf_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
     <Blake2bMac56 as Update>::update(&mut kdf_mac, &nonce);
     let tmp = <Blake2bMac56 as FixedOutput>::finalize_fixed(kdf_mac);
 
@@ -213,12 +215,12 @@ pub fn pie_wrap_secret_k2k4(
     xchacha_nonce.copy_from_slice(&tmp[32..56]);
 
     // Derive authentication key
+    // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
     type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, &nonce);
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_AUTH_KEY_DOMAIN);
     let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Encrypt the plaintext key
@@ -227,6 +229,7 @@ pub fn pie_wrap_secret_k2k4(
     cipher.apply_keystream(&mut ciphertext);
 
     // Compute authentication tag
+    // t = BLAKE2b-MAC(key=Ak, msg=header || nonce || ciphertext, len=32)
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -265,10 +268,11 @@ pub fn pie_unwrap_secret_k2k4(
     use subtle::ConstantTimeEq;
 
     // Derive encryption key and XChaCha20 nonce
+    // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
     type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac56 as Update>::update(&mut kdf_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
     <Blake2bMac56 as Update>::update(&mut kdf_mac, nonce);
     let tmp = <Blake2bMac56 as FixedOutput>::finalize_fixed(kdf_mac);
 
@@ -279,15 +283,16 @@ pub fn pie_unwrap_secret_k2k4(
     xchacha_nonce.copy_from_slice(&tmp[32..56]);
 
     // Derive authentication key
+    // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
     type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_KDF_DOMAIN);
+    <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, nonce);
-    <Blake2bMac32 as Update>::update(&mut auth_mac, PIE_AUTH_KEY_DOMAIN);
     let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Verify authentication tag
+    // t2 = BLAKE2b-MAC(key=Ak, msg=header || nonce || ciphertext, len=32)
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -314,18 +319,20 @@ pub fn pie_unwrap_secret_k2k4(
 // =============================================================================
 
 /// Nonce size for K1/K3 PIE protocol (32 bytes).
+#[cfg(any(feature = "k1", feature = "k3"))]
 pub const PIE_K1K3_NONCE_SIZE: usize = 32;
 
 /// Tag size for K1/K3 PIE protocol (48 bytes - HMAC-SHA384).
+#[cfg(any(feature = "k1", feature = "k3"))]
 pub const PIE_K1K3_TAG_SIZE: usize = 48;
 
-/// Domain separation string for K1/K3 PIE KDF.
+/// Domain separation byte for K1/K3 PIE encryption key derivation (0x80).
 #[cfg(any(feature = "k1", feature = "k3"))]
-const PIE_K1K3_KDF_DOMAIN: &[u8] = b"paserk-wrap.pie.";
+const PIE_K1K3_ENCRYPTION_KEY_DOMAIN: u8 = 0x80;
 
-/// Domain separation string for K1/K3 PIE authentication key derivation.
+/// Domain separation byte for K1/K3 PIE authentication key derivation (0x81).
 #[cfg(any(feature = "k1", feature = "k3"))]
-const PIE_K1K3_AUTH_KEY_DOMAIN: &[u8] = b"auth-key-for-tag";
+const PIE_K1K3_AUTH_KEY_DOMAIN: u8 = 0x81;
 
 /// Derives encryption and authentication keys for K1/K3 PIE using HMAC-SHA384.
 ///
@@ -348,11 +355,11 @@ fn derive_pie_keys_k1k3(
     use hmac::{Hmac, Mac};
     use sha2::Sha384;
 
-    // Derive tmp = HMAC-SHA384(key=wrapping_key, msg="paserk-wrap.pie." || nonce)
+    // Derive tmp = HMAC-SHA384(key=wrapping_key, msg=0x80 || nonce)
     // Use first 32 bytes as Ek, next 16 bytes as AES-CTR nonce
     let mut kdf_mac = <Hmac<Sha384> as Mac>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    kdf_mac.update(PIE_K1K3_KDF_DOMAIN);
+    kdf_mac.update(&[PIE_K1K3_ENCRYPTION_KEY_DOMAIN]);
     kdf_mac.update(nonce);
     let tmp = kdf_mac.finalize().into_bytes();
 
@@ -363,12 +370,11 @@ fn derive_pie_keys_k1k3(
     aes_nonce.copy_from_slice(&tmp[32..48]);
 
     // Derive authentication key
-    // Ak = HMAC-SHA384(key=wrapping_key, msg="paserk-wrap.pie." || nonce || "auth-key-for-tag")
+    // Ak = HMAC-SHA384(key=wrapping_key, msg=0x81 || nonce)
     let mut auth_mac = <Hmac<Sha384> as Mac>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
-    auth_mac.update(PIE_K1K3_KDF_DOMAIN);
+    auth_mac.update(&[PIE_K1K3_AUTH_KEY_DOMAIN]);
     auth_mac.update(nonce);
-    auth_mac.update(PIE_K1K3_AUTH_KEY_DOMAIN);
     let auth_key: [u8; 48] = auth_mac.finalize().into_bytes().into();
 
     Ok((encryption_key, aes_nonce, auth_key))

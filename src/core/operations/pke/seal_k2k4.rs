@@ -2,7 +2,7 @@
 //!
 //! This module implements public key encryption using:
 //! - X25519 for key exchange
-//! - BLAKE2b for key derivation
+//! - BLAKE2b for key derivation (unkeyed with domain bytes)
 //! - XChaCha20 for symmetric encryption
 
 use crate::core::error::{PaserkError, PaserkResult};
@@ -16,22 +16,25 @@ pub const SEAL_CIPHERTEXT_SIZE: usize = 32;
 /// Size of the authentication tag.
 pub const SEAL_TAG_SIZE: usize = 32;
 
-/// Total size of sealed data: ephemeral_pk || ciphertext || tag.
-pub const SEAL_DATA_SIZE: usize = EPHEMERAL_PK_SIZE + SEAL_CIPHERTEXT_SIZE + SEAL_TAG_SIZE;
+/// Size of the XChaCha20 nonce.
+const SEAL_NONCE_SIZE: usize = 24;
 
-/// Output type for seal operation: (ephemeral_pk, ciphertext, tag).
-pub(crate) type SealOutput = ([u8; EPHEMERAL_PK_SIZE], [u8; SEAL_CIPHERTEXT_SIZE], [u8; SEAL_TAG_SIZE]);
+/// Total size of sealed data: tag || ephemeral_pk || ciphertext.
+pub const SEAL_DATA_SIZE: usize = SEAL_TAG_SIZE + EPHEMERAL_PK_SIZE + SEAL_CIPHERTEXT_SIZE;
 
-/// Domain separation for seal encryption key derivation.
-const SEAL_EK_DOMAIN: &[u8] = b"paserk.seal.k4";
+/// Output type for seal operation: (tag, ephemeral_pk, ciphertext) - per spec order.
+pub(crate) type SealOutput = ([u8; SEAL_TAG_SIZE], [u8; EPHEMERAL_PK_SIZE], [u8; SEAL_CIPHERTEXT_SIZE]);
 
-/// Domain separation for seal authentication key derivation.
-const SEAL_AK_DOMAIN: &[u8] = b"paserk.seal.k4.auth";
+/// Domain byte for encryption key derivation (0x01 per spec).
+const SEAL_EK_DOMAIN_BYTE: u8 = 0x01;
+
+/// Domain byte for authentication key derivation (0x02 per spec).
+const SEAL_AK_DOMAIN_BYTE: u8 = 0x02;
 
 /// Seals (encrypts) a symmetric key with a recipient's public key.
 ///
 /// This uses X25519 ECDH to establish a shared secret, then derives
-/// encryption and authentication keys using BLAKE2b, encrypts the
+/// encryption and authentication keys using unkeyed BLAKE2b, encrypts the
 /// symmetric key with XChaCha20, and computes a BLAKE2b-MAC tag.
 ///
 /// # Arguments
@@ -42,7 +45,7 @@ const SEAL_AK_DOMAIN: &[u8] = b"paserk.seal.k4.auth";
 ///
 /// # Returns
 ///
-/// A tuple of (ephemeral_public_key, ciphertext, tag).
+/// A tuple of (tag, ephemeral_public_key, ciphertext) per spec order.
 #[cfg(any(feature = "k2", feature = "k4"))]
 pub fn seal_k2k4(
     plaintext_key: &[u8; 32],
@@ -50,7 +53,7 @@ pub fn seal_k2k4(
     header: &str,
 ) -> PaserkResult<SealOutput> {
     use blake2::digest::{FixedOutput, KeyInit, Update};
-    use blake2::Blake2bMac;
+    use blake2::{Blake2b, Blake2bMac};
     use chacha20::cipher::{KeyIvInit, StreamCipher};
     use chacha20::XChaCha20;
     use rand_core::{OsRng, TryRngCore};
@@ -69,31 +72,39 @@ pub fn seal_k2k4(
     let recipient_public = PublicKey::from(*recipient_pk);
     let shared_secret = ephemeral_secret.diffie_hellman(&recipient_public);
 
-    // Derive encryption key: Ek = BLAKE2b(shared_secret || ephemeral_pk || recipient_pk, domain)
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+    // Derive encryption key: Ek = BLAKE2b-256(0x01 || h || xk || epk || xpk) - UNKEYED
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    let mut ek_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ek_hasher, &[SEAL_EK_DOMAIN_BYTE]);
+    <Blake2b32 as Update>::update(&mut ek_hasher, header.as_bytes());
+    <Blake2b32 as Update>::update(&mut ek_hasher, shared_secret.as_bytes());
+    <Blake2b32 as Update>::update(&mut ek_hasher, &ephemeral_pk);
+    <Blake2b32 as Update>::update(&mut ek_hasher, recipient_pk);
+    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
-    let mut ek_hasher = <Blake2bMac32 as KeyInit>::new_from_slice(SEAL_EK_DOMAIN)
-        .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ek_hasher, shared_secret.as_bytes());
-    <Blake2bMac32 as Update>::update(&mut ek_hasher, &ephemeral_pk);
-    <Blake2bMac32 as Update>::update(&mut ek_hasher, recipient_pk);
-    let encryption_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ek_hasher).into();
+    // Derive authentication key: Ak = BLAKE2b-256(0x02 || h || xk || epk || xpk) - UNKEYED
+    let mut ak_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ak_hasher, &[SEAL_AK_DOMAIN_BYTE]);
+    <Blake2b32 as Update>::update(&mut ak_hasher, header.as_bytes());
+    <Blake2b32 as Update>::update(&mut ak_hasher, shared_secret.as_bytes());
+    <Blake2b32 as Update>::update(&mut ak_hasher, &ephemeral_pk);
+    <Blake2b32 as Update>::update(&mut ak_hasher, recipient_pk);
+    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
 
-    // Derive authentication key
-    let mut ak_hasher = <Blake2bMac32 as KeyInit>::new_from_slice(SEAL_AK_DOMAIN)
-        .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ak_hasher, shared_secret.as_bytes());
-    <Blake2bMac32 as Update>::update(&mut ak_hasher, &ephemeral_pk);
-    <Blake2bMac32 as Update>::update(&mut ak_hasher, recipient_pk);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+    // Derive nonce: n = BLAKE2b-192(epk || xpk) - UNKEYED
+    type Blake2b24 = Blake2b<blake2::digest::consts::U24>;
+    let mut n_hasher = <Blake2b24 as Default>::default();
+    <Blake2b24 as Update>::update(&mut n_hasher, &ephemeral_pk);
+    <Blake2b24 as Update>::update(&mut n_hasher, recipient_pk);
+    let nonce: [u8; SEAL_NONCE_SIZE] = <Blake2b24 as FixedOutput>::finalize_fixed(n_hasher).into();
 
-    // Encrypt the plaintext key with XChaCha20 (using zeros as nonce since Ek is unique per seal)
-    let nonce = [0u8; 24];
+    // Encrypt the plaintext key: edk = XChaCha20(pdk, Ek, n)
     let mut ciphertext = *plaintext_key;
     let mut cipher = XChaCha20::new(&encryption_key.into(), &nonce.into());
     cipher.apply_keystream(&mut ciphertext);
 
-    // Compute authentication tag: tag = BLAKE2b-MAC(Ak, header || ephemeral_pk || ciphertext)
+    // Compute authentication tag: t = BLAKE2b-MAC(h || epk || edk, key=Ak) - KEYED
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut tag_mac = <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -104,16 +115,17 @@ pub fn seal_k2k4(
     // Zeroize sensitive data
     zeroize::Zeroize::zeroize(&mut ephemeral_secret_bytes);
 
-    Ok((ephemeral_pk, ciphertext, tag))
+    // Return in spec order: (tag, ephemeral_pk, ciphertext)
+    Ok((tag, ephemeral_pk, ciphertext))
 }
 
 /// Unseals (decrypts) a symmetric key using the recipient's secret key.
 ///
 /// # Arguments
 ///
+/// * `tag` - The authentication tag
 /// * `ephemeral_pk` - The ephemeral public key from the sealed data
 /// * `ciphertext` - The encrypted key material
-/// * `tag` - The authentication tag
 /// * `recipient_sk` - The recipient's 64-byte Ed25519 secret key (will be converted to X25519)
 /// * `header` - The PASERK header (e.g., "k4.seal.")
 ///
@@ -122,14 +134,14 @@ pub fn seal_k2k4(
 /// The unsealed 32-byte symmetric key.
 #[cfg(any(feature = "k2", feature = "k4"))]
 pub fn unseal_k2k4(
+    tag: &[u8; SEAL_TAG_SIZE],
     ephemeral_pk: &[u8; EPHEMERAL_PK_SIZE],
     ciphertext: &[u8; SEAL_CIPHERTEXT_SIZE],
-    tag: &[u8; SEAL_TAG_SIZE],
     recipient_sk: &[u8; 64],
     header: &str,
 ) -> PaserkResult<[u8; 32]> {
     use blake2::digest::{FixedOutput, KeyInit, Update};
-    use blake2::Blake2bMac;
+    use blake2::{Blake2b, Blake2bMac};
     use chacha20::cipher::{KeyIvInit, StreamCipher};
     use chacha20::XChaCha20;
     use ed25519_dalek::SigningKey;
@@ -152,25 +164,27 @@ pub fn unseal_k2k4(
     let ephemeral_public = PublicKey::from(*ephemeral_pk);
     let shared_secret = x25519_secret.diffie_hellman(&ephemeral_public);
 
-    // Derive encryption key
+    // Derive encryption key: Ek = BLAKE2b-256(0x01 || h || xk || epk || xpk) - UNKEYED
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    let mut ek_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ek_hasher, &[SEAL_EK_DOMAIN_BYTE]);
+    <Blake2b32 as Update>::update(&mut ek_hasher, header.as_bytes());
+    <Blake2b32 as Update>::update(&mut ek_hasher, shared_secret.as_bytes());
+    <Blake2b32 as Update>::update(&mut ek_hasher, ephemeral_pk);
+    <Blake2b32 as Update>::update(&mut ek_hasher, &recipient_pk);
+    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
+
+    // Derive authentication key: Ak = BLAKE2b-256(0x02 || h || xk || epk || xpk) - UNKEYED
+    let mut ak_hasher = <Blake2b32 as Default>::default();
+    <Blake2b32 as Update>::update(&mut ak_hasher, &[SEAL_AK_DOMAIN_BYTE]);
+    <Blake2b32 as Update>::update(&mut ak_hasher, header.as_bytes());
+    <Blake2b32 as Update>::update(&mut ak_hasher, shared_secret.as_bytes());
+    <Blake2b32 as Update>::update(&mut ak_hasher, ephemeral_pk);
+    <Blake2b32 as Update>::update(&mut ak_hasher, &recipient_pk);
+    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+
+    // Verify authentication tag: t = BLAKE2b-MAC(h || epk || edk, key=Ak) - KEYED
     type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
-
-    let mut ek_hasher = <Blake2bMac32 as KeyInit>::new_from_slice(SEAL_EK_DOMAIN)
-        .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ek_hasher, shared_secret.as_bytes());
-    <Blake2bMac32 as Update>::update(&mut ek_hasher, ephemeral_pk);
-    <Blake2bMac32 as Update>::update(&mut ek_hasher, &recipient_pk);
-    let encryption_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ek_hasher).into();
-
-    // Derive authentication key
-    let mut ak_hasher = <Blake2bMac32 as KeyInit>::new_from_slice(SEAL_AK_DOMAIN)
-        .map_err(|_| PaserkError::CryptoError)?;
-    <Blake2bMac32 as Update>::update(&mut ak_hasher, shared_secret.as_bytes());
-    <Blake2bMac32 as Update>::update(&mut ak_hasher, ephemeral_pk);
-    <Blake2bMac32 as Update>::update(&mut ak_hasher, &recipient_pk);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(ak_hasher).into();
-
-    // Verify authentication tag
     let mut tag_mac = <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -180,8 +194,15 @@ pub fn unseal_k2k4(
         <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
 
     if computed_tag.ct_eq(tag).into() {
-        // Decrypt the ciphertext
-        let nonce = [0u8; 24];
+        // Derive nonce: n = BLAKE2b-192(epk || xpk) - UNKEYED
+        type Blake2b24 = Blake2b<blake2::digest::consts::U24>;
+        let mut n_hasher = <Blake2b24 as Default>::default();
+        <Blake2b24 as Update>::update(&mut n_hasher, ephemeral_pk);
+        <Blake2b24 as Update>::update(&mut n_hasher, &recipient_pk);
+        let nonce: [u8; SEAL_NONCE_SIZE] =
+            <Blake2b24 as FixedOutput>::finalize_fixed(n_hasher).into();
+
+        // Decrypt the ciphertext: pdk = XChaCha20(edk, Ek, n)
         let mut plaintext = *ciphertext;
         let mut cipher = XChaCha20::new(&encryption_key.into(), &nonce.into());
         cipher.apply_keystream(&mut plaintext);
@@ -228,15 +249,15 @@ mod tests {
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
-        let (ephemeral_pk, ciphertext, tag) =
+        let (tag, ephemeral_pk, ciphertext) =
             seal_k2k4(&plaintext_key, &x25519_public, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
         let unsealed = unseal_k2k4(
+            &tag,
             &ephemeral_pk,
             &ciphertext,
-            &tag,
             &secret_key_bytes,
             header,
         )?;
@@ -253,8 +274,8 @@ mod tests {
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
-        let (epk1, ct1, tag1) = seal_k2k4(&plaintext_key, &x25519_public, header)?;
-        let (epk2, ct2, tag2) = seal_k2k4(&plaintext_key, &x25519_public, header)?;
+        let (tag1, epk1, ct1) = seal_k2k4(&plaintext_key, &x25519_public, header)?;
+        let (tag2, epk2, ct2) = seal_k2k4(&plaintext_key, &x25519_public, header)?;
 
         // Different ephemeral keys should produce different outputs
         assert_ne!(epk1, epk2);
@@ -272,14 +293,14 @@ mod tests {
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
-        let (ephemeral_pk, ciphertext, tag) =
+        let (tag, ephemeral_pk, ciphertext) =
             seal_k2k4(&plaintext_key, &x25519_public1, header)?;
 
         // Try to unseal with wrong key
         let result = unseal_k2k4(
+            &tag,
             &ephemeral_pk,
             &ciphertext,
-            &tag,
             &secret_key2_bytes,
             header,
         );
@@ -296,15 +317,15 @@ mod tests {
         let plaintext_key = [0x42u8; 32];
         let header = "k4.seal.";
 
-        let (ephemeral_pk, ciphertext, mut tag) =
+        let (mut tag, ephemeral_pk, ciphertext) =
             seal_k2k4(&plaintext_key, &x25519_public, header)?;
 
         tag[0] ^= 0xff;
 
         let result = unseal_k2k4(
+            &tag,
             &ephemeral_pk,
             &ciphertext,
-            &tag,
             &secret_key_bytes,
             header,
         );
