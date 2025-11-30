@@ -19,10 +19,6 @@ ignore = [
 # Licenses - Ensure all dependencies have acceptable licenses
 # ============================================================================
 [licenses]
-unlicensed = "deny"
-copyleft = "warn"
-allow-osi-fsf-free = "either"
-default = "deny"
 confidence-threshold = 0.8
 
 # Explicitly allowed licenses
