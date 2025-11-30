@@ -153,13 +153,16 @@ pub fn pbkw_wrap_local_k2k4(
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
-    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
+    let mut encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
     // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
     let mut ak_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
-    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+    let mut auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+
+    // Zeroize psk now that we've derived the keys
+    zeroize::Zeroize::zeroize(&mut psk);
 
     // Encrypt the plaintext key: edk = XChaCha20(msg=ptk, key=Ek, nonce=n)
     // Note: nonce is used DIRECTLY, not derived
@@ -181,6 +184,10 @@ pub fn pbkw_wrap_local_k2k4(
     <Blake2bMac32 as Update>::update(&mut tag_mac, &nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &ciphertext);
     let tag: [u8; PBKW_TAG_SIZE] = <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
+
+    // Zeroize derived keys
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((salt, nonce, ciphertext, tag))
 }
@@ -238,13 +245,16 @@ pub fn pbkw_unwrap_local_k2k4(
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
-    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
+    let mut encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
     // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
     let mut ak_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
-    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+    let mut auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+
+    // Zeroize psk now that we've derived the keys
+    zeroize::Zeroize::zeroize(&mut psk);
 
     // Verify authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
@@ -262,6 +272,9 @@ pub fn pbkw_unwrap_local_k2k4(
     let computed_tag: [u8; PBKW_TAG_SIZE] =
         <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
 
+    // Zeroize auth key after computing tag
+    zeroize::Zeroize::zeroize(&mut auth_key);
+
     if computed_tag.ct_eq(tag).into() {
         // Decrypt the ciphertext: ptk = XChaCha20(edk, Ek, n)
         // Note: nonce is used DIRECTLY, not derived
@@ -269,8 +282,13 @@ pub fn pbkw_unwrap_local_k2k4(
         let mut cipher = XChaCha20::new(&encryption_key.into(), nonce.into());
         cipher.apply_keystream(&mut plaintext);
 
+        // Zeroize encryption key
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize encryption key on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
         Err(PaserkError::AuthenticationFailed)
     }
 }
@@ -332,13 +350,16 @@ pub fn pbkw_wrap_secret_k2k4(
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
-    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
+    let mut encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
     // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
     let mut ak_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
-    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+    let mut auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+
+    // Zeroize psk now that we've derived the keys
+    zeroize::Zeroize::zeroize(&mut psk);
 
     // Encrypt the plaintext key: edk = XChaCha20(msg=ptk, key=Ek, nonce=n)
     // Note: nonce is used DIRECTLY, not derived
@@ -360,6 +381,10 @@ pub fn pbkw_wrap_secret_k2k4(
     <Blake2bMac32 as Update>::update(&mut tag_mac, &nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &ciphertext);
     let tag: [u8; PBKW_TAG_SIZE] = <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
+
+    // Zeroize derived keys
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((salt, nonce, ciphertext, tag))
 }
@@ -417,13 +442,16 @@ pub fn pbkw_unwrap_secret_k2k4(
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
-    let encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
+    let mut encryption_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ek_hasher).into();
 
     // Derive authentication key: Ak = crypto_generichash(0xFE || k) - UNKEYED BLAKE2b
     let mut ak_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ak_hasher, &[PBKW_AUTH_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ak_hasher, &psk);
-    let auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+    let mut auth_key: [u8; 32] = <Blake2b32 as FixedOutput>::finalize_fixed(ak_hasher).into();
+
+    // Zeroize psk now that we've derived the keys
+    zeroize::Zeroize::zeroize(&mut psk);
 
     // Verify authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
@@ -441,6 +469,9 @@ pub fn pbkw_unwrap_secret_k2k4(
     let computed_tag: [u8; PBKW_TAG_SIZE] =
         <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
 
+    // Zeroize auth key after computing tag
+    zeroize::Zeroize::zeroize(&mut auth_key);
+
     if computed_tag.ct_eq(tag).into() {
         // Decrypt the ciphertext: ptk = XChaCha20(edk, Ek, n)
         // Note: nonce is used DIRECTLY, not derived
@@ -448,8 +479,13 @@ pub fn pbkw_unwrap_secret_k2k4(
         let mut cipher = XChaCha20::new(&encryption_key.into(), nonce.into());
         cipher.apply_keystream(&mut plaintext);
 
+        // Zeroize encryption key
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize encryption key on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
         Err(PaserkError::AuthenticationFailed)
     }
 }

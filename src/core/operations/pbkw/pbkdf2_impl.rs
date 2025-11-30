@@ -111,6 +111,9 @@ fn derive_keys_k1k3(
     ak_mac.update(PBKW_AK_SUFFIX);
     let auth_key: [u8; 48] = ak_mac.finalize().into_bytes().into();
 
+    // Zeroize PSK now that we've derived the keys
+    zeroize::Zeroize::zeroize(&mut psk);
+
     Ok((encryption_key, auth_key))
 }
 
@@ -178,7 +181,7 @@ pub fn pbkw_wrap_local_k1k3(
         .map_err(|_| PaserkError::CryptoError)?;
 
     // Derive keys
-    let (encryption_key, auth_key) =
+    let (mut encryption_key, mut auth_key) =
         derive_keys_k1k3(password, &salt, params.iterations, PBKW_EK_DOMAIN)?;
 
     // Encrypt the plaintext key
@@ -187,6 +190,10 @@ pub fn pbkw_wrap_local_k1k3(
 
     // Compute authentication tag
     let tag = compute_tag_k1k3(&auth_key, header, &salt, &nonce, &ciphertext)?;
+
+    // Zeroize derived keys
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((salt, nonce, ciphertext, tag))
 }
@@ -219,18 +226,27 @@ pub fn pbkw_unwrap_local_k1k3(
     use subtle::ConstantTimeEq;
 
     // Derive keys
-    let (encryption_key, auth_key) =
+    let (mut encryption_key, mut auth_key) =
         derive_keys_k1k3(password, salt, params.iterations, PBKW_EK_DOMAIN)?;
 
     // Verify authentication tag
     let computed_tag = compute_tag_k1k3(&auth_key, header, salt, nonce, ciphertext)?;
 
+    // Zeroize auth key after computing tag
+    zeroize::Zeroize::zeroize(&mut auth_key);
+
     if computed_tag.ct_eq(tag).into() {
         // Decrypt the ciphertext
         let mut plaintext = *ciphertext;
         aes_ctr_encrypt(&encryption_key, nonce, &mut plaintext);
+
+        // Zeroize encryption key
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize encryption key on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
         Err(PaserkError::AuthenticationFailed)
     }
 }
@@ -258,7 +274,7 @@ pub fn pbkw_wrap_secret_k3(
         .map_err(|_| PaserkError::CryptoError)?;
 
     // Derive keys
-    let (encryption_key, auth_key) =
+    let (mut encryption_key, mut auth_key) =
         derive_keys_k1k3(password, &salt, params.iterations, PBKW_SECRET_DOMAIN)?;
 
     // Encrypt the plaintext key
@@ -267,6 +283,10 @@ pub fn pbkw_wrap_secret_k3(
 
     // Compute authentication tag
     let tag = compute_tag_k1k3(&auth_key, header, &salt, &nonce, &ciphertext)?;
+
+    // Zeroize derived keys
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((salt, nonce, ciphertext, tag))
 }
@@ -287,18 +307,27 @@ pub fn pbkw_unwrap_secret_k3(
     const PBKW_SECRET_DOMAIN: &[u8] = b"paserk-wrap.pie-secret";
 
     // Derive keys
-    let (encryption_key, auth_key) =
+    let (mut encryption_key, mut auth_key) =
         derive_keys_k1k3(password, salt, params.iterations, PBKW_SECRET_DOMAIN)?;
 
     // Verify authentication tag
     let computed_tag = compute_tag_k1k3(&auth_key, header, salt, nonce, ciphertext)?;
 
+    // Zeroize auth key after computing tag
+    zeroize::Zeroize::zeroize(&mut auth_key);
+
     if computed_tag.ct_eq(tag).into() {
         // Decrypt the ciphertext
         let mut plaintext = *ciphertext;
         aes_ctr_encrypt(&encryption_key, nonce, &mut plaintext);
+
+        // Zeroize encryption key
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize encryption key on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
         Err(PaserkError::AuthenticationFailed)
     }
 }

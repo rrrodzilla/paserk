@@ -22,7 +22,7 @@ categories = [
 features = ["k4", "prelude"]
 
 [features]
-default = ["k4"]
+default = ["k4", "prelude"]
 
 # Version features - each enables the cryptographic primitives needed
 k1 = ["sha2", "hmac", "aes", "ctr", "pbkdf2", "rsa"]

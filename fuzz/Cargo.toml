@@ -1,0 +1,58 @@
+[package]
+name = "paserk-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.paserk]
+path = ".."
+features = ["k1", "k2", "k3", "k4"]
+
+[[bin]]
+name = "fuzz_parse_local"
+path = "fuzz_targets/fuzz_parse_local.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parse_secret"
+path = "fuzz_targets/fuzz_parse_secret.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parse_public"
+path = "fuzz_targets/fuzz_parse_public.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parse_local_pw"
+path = "fuzz_targets/fuzz_parse_local_pw.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parse_seal"
+path = "fuzz_targets/fuzz_parse_seal.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parse_wrap"
+path = "fuzz_targets/fuzz_parse_wrap.rs"
+test = false
+doc = false
+bench = false

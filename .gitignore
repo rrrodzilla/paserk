@@ -1,6 +1,7 @@
 # Hidden files and directories
 .*
 !.gitignore
+!.github
 
 # Markdown files except README
 *.md
@@ -8,3 +9,9 @@
 
 /target
 /Cargo.lock
+
+# Fuzz build artifacts
+/fuzz/target/
+/fuzz/Cargo.lock
+/fuzz/corpus/
+/fuzz/artifacts/
