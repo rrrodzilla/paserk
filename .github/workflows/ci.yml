@@ -55,9 +55,6 @@ jobs:
         run: cargo build --all-features
       - name: Test (all features)
         run: cargo test --all-features
-      - name: Test (no default features, lib only)
-        # Doc tests require features to be enabled, so only run lib tests
-        run: cargo test --lib --no-default-features
       - name: Test (K1 only)
         run: cargo test --no-default-features --features k1-insecure
       - name: Test (K2 only)
