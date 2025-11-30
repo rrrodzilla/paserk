@@ -25,21 +25,24 @@
 //!
 //! # PASERK Types
 //!
-//! All PASERK key types are implemented for K2/K4 (Sodium) versions:
+//! All PASERK key types are implemented for all versions (K1-K4):
 //!
-//! | Type | Format | Description | Status |
-//! |------|--------|-------------|--------|
-//! | `local` | `k{v}.local.{data}` | Symmetric encryption key | ✅ K2/K4 |
-//! | `public` | `k{v}.public.{data}` | Public verification key | ✅ K2/K4 |
-//! | `secret` | `k{v}.secret.{data}` | Secret signing key | ✅ K2/K4 |
-//! | `lid` | `k{v}.lid.{data}` | Local key identifier | ✅ K2/K4 |
-//! | `pid` | `k{v}.pid.{data}` | Public key identifier | ✅ K2/K4 |
-//! | `sid` | `k{v}.sid.{data}` | Secret key identifier | ✅ K2/K4 |
-//! | `local-wrap` | `k{v}.local-wrap.pie.{data}` | PIE-wrapped symmetric key | ✅ K2/K4 |
-//! | `secret-wrap` | `k{v}.secret-wrap.pie.{data}` | PIE-wrapped secret key | ✅ K2/K4 |
-//! | `local-pw` | `k{v}.local-pw.{data}` | Password-wrapped symmetric key | ✅ K2/K4 |
-//! | `secret-pw` | `k{v}.secret-pw.{data}` | Password-wrapped secret key | ✅ K2/K4 |
-//! | `seal` | `k{v}.seal.{data}` | PKE-encrypted symmetric key | ✅ K2/K4 |
+//! | Type | Format | Description | K1 | K2 | K3 | K4 |
+//! |------|--------|-------------|----|----|----|----|
+//! | `local` | `k{v}.local.{data}` | Symmetric encryption key | ✅ | ✅ | ✅ | ✅ |
+//! | `public` | `k{v}.public.{data}` | Public verification key | ✅ | ✅ | ✅ | ✅ |
+//! | `secret` | `k{v}.secret.{data}` | Secret signing key | N/A¹ | ✅ | ✅ | ✅ |
+//! | `lid` | `k{v}.lid.{data}` | Local key identifier | ✅ | ✅ | ✅ | ✅ |
+//! | `pid` | `k{v}.pid.{data}` | Public key identifier | ✅ | ✅ | ✅ | ✅ |
+//! | `sid` | `k{v}.sid.{data}` | Secret key identifier | N/A¹ | ✅ | ✅ | ✅ |
+//! | `local-wrap` | `k{v}.local-wrap.pie.{data}` | PIE-wrapped symmetric key | ✅ | ✅ | ✅ | ✅ |
+//! | `secret-wrap` | `k{v}.secret-wrap.pie.{data}` | PIE-wrapped secret key | N/A¹ | ✅ | ✅ | ✅ |
+//! | `local-pw` | `k{v}.local-pw.{data}` | Password-wrapped symmetric key | ✅ | ✅ | ✅ | ✅ |
+//! | `secret-pw` | `k{v}.secret-pw.{data}` | Password-wrapped secret key | N/A¹ | ✅ | ✅ | ✅ |
+//! | `seal` | `k{v}.seal.{data}` | PKE-encrypted symmetric key | ⏳² | ✅ | ✅ | ✅ |
+//!
+//! ¹ K1 uses RSA which has no separate secret key type in PASETO V1.
+//! ² K1 seal (RSA-KEM) not yet implemented.
 //!
 //! # Versions
 //!
@@ -47,9 +50,9 @@
 //!
 //! | Version | Algorithms | Status |
 //! |---------|------------|--------|
-//! | **K1** | RSA + AES-CTR + HMAC-SHA384 | ⏳ Not yet implemented |
+//! | **K1** | RSA + AES-CTR + HMAC-SHA384 | ✅ (except seal) |
 //! | **K2** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented |
-//! | **K3** | P-384 + AES-CTR + HMAC-SHA384 | ⏳ Not yet implemented |
+//! | **K3** | P-384 + AES-CTR + HMAC-SHA384 | ✅ Fully implemented |
 //! | **K4** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented (Recommended) |
 //!
 //! # Features
@@ -60,26 +63,32 @@
 //! [dependencies]
 //! paserk = { version = "0.1", features = ["k4"] }  # K4 only (default, recommended)
 //! paserk = { version = "0.1", features = ["k2", "k4"] }  # K2 and K4
+//! paserk = { version = "0.1", features = ["all-versions"] }  # All versions
 //! ```
-//!
-//! **Note:** K1 and K3 features are defined but not yet implemented. Using them
-//! will compile but operations will not be available until implementation is complete.
 //!
 //! # Cryptographic Operations
 //!
 //! ## Key Wrapping (PIE Protocol)
-//! - XChaCha20 for encryption
-//! - BLAKE2b for key derivation and authentication
+//!
+//! | Version | Encryption | Authentication |
+//! |---------|------------|----------------|
+//! | K1/K3 | AES-256-CTR | HMAC-SHA384 (48-byte tag) |
+//! | K2/K4 | XChaCha20 | BLAKE2b (32-byte tag) |
 //!
 //! ## Password-Based Key Wrapping (PBKW)
-//! - Argon2id for key derivation with configurable parameters
-//! - XChaCha20 for encryption
-//! - BLAKE2b for authentication
+//!
+//! | Version | KDF | Encryption | Authentication |
+//! |---------|-----|------------|----------------|
+//! | K1/K3 | PBKDF2-SHA384 | AES-256-CTR | HMAC-SHA384 |
+//! | K2/K4 | Argon2id | XChaCha20 | BLAKE2b |
 //!
 //! ## Public Key Encryption (Seal)
-//! - X25519 ECDH for key exchange
-//! - BLAKE2b for key derivation
-//! - XChaCha20 for encryption
+//!
+//! | Version | Key Exchange | Encryption | Authentication |
+//! |---------|--------------|------------|----------------|
+//! | K2/K4 | X25519 ECDH | XChaCha20 | BLAKE2b |
+//! | K3 | P-384 ECDH | AES-256-CTR | HMAC-SHA384 |
+//! | K1 | RSA-KEM | Not implemented | - |
 //!
 //! # Security
 //!
@@ -103,20 +112,21 @@
 //! ```rust
 //! use paserk::prelude::*;
 //!
+//! # fn main() -> Result<(), paserk::PaserkError> {
 //! let key = PaserkLocal::<K4>::from([0x42u8; 32]);
 //!
 //! // Use preset security profiles
 //! let wrapped = LocalPwBuilder::<K4>::moderate()
-//!     .try_wrap(&key, b"password")
-//!     .expect("wrap should succeed");
+//!     .try_wrap(&key, b"password")?;
 //!
 //! // Or customize parameters
 //! let wrapped = LocalPwBuilder::<K4>::new()
 //!     .memory_kib(128 * 1024)
 //!     .iterations(3)
 //!     .parallelism(2)
-//!     .try_wrap(&key, b"password")
-//!     .expect("wrap should succeed");
+//!     .try_wrap(&key, b"password")?;
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod core;
