@@ -11,29 +11,17 @@ use core::marker::PhantomData;
 use base64::prelude::*;
 
 use crate::core::error::PaserkError;
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
-use crate::core::error::PaserkResult;
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
-use crate::core::operations::wrap::Pie;
 use crate::core::operations::wrap::{WrapProtocol, PIE_NONCE_SIZE, PIE_TAG_SIZE};
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
-use crate::core::types::PaserkSecret;
 use crate::core::version::PaserkVersion;
+
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
+use crate::core::error::PaserkResult;
+
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
+use crate::core::operations::wrap::Pie;
+
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
+use crate::core::types::PaserkSecret;
 
 /// PIE nonce size (same for all versions).
 const PIE_WRAP_NONCE_SIZE: usize = PIE_NONCE_SIZE;
@@ -480,11 +468,17 @@ impl<V: PaserkVersion, P: WrapProtocol> Eq for PaserkSecretWrap<V, P> {}
     feature = "k4"
 ))]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
+
+    #[cfg(any(feature = "k3", feature = "k4"))]
     use crate::core::types::PaserkLocal;
+
+    #[cfg(feature = "k4")]
     use crate::core::version::K4;
 
     #[test]
+    #[cfg(feature = "k4")]
     fn test_header() {
         assert_eq!(PaserkSecretWrap::<K4, Pie>::header(), "k4.secret-wrap.pie.");
     }
@@ -539,6 +533,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "k4")]
     fn test_parse_invalid_version() {
         // Need enough base64 data for nonce (32) + ciphertext (64) + tag (32) = 128 bytes
         let result = PaserkSecretWrap::<K4, Pie>::try_from(
@@ -548,6 +543,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "k4")]
     fn test_parse_invalid_type() {
         let result = PaserkSecretWrap::<K4, Pie>::try_from(
             "k4.local-wrap.pie.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -556,6 +552,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "k4")]
     fn test_parse_invalid_protocol() {
         let result = PaserkSecretWrap::<K4, Pie>::try_from(
             "k4.secret-wrap.xyz.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -564,6 +561,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "k4")]
     fn test_parse_invalid_data_length() {
         let result = PaserkSecretWrap::<K4, Pie>::try_from("k4.secret-wrap.pie.AAAA");
         assert!(matches!(result, Err(PaserkError::InvalidKey)));

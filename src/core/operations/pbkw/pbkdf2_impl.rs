@@ -24,6 +24,7 @@ pub type PbkwLocalOutputK1K3 = (
 
 /// Output type for secret key wrapping: (salt, nonce, ciphertext, tag).
 /// K1 uses RSA keys (variable size), K3 uses P-384 keys (48 bytes).
+#[allow(dead_code)]
 pub type PbkwSecretOutputK3 = (
     [u8; PBKDF2_SALT_SIZE],
     [u8; AES_CTR_NONCE_SIZE],

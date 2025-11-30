@@ -233,6 +233,7 @@ pub fn unseal_k2k4(
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     /// Helper function to generate an Ed25519 keypair for testing.

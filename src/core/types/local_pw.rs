@@ -462,6 +462,7 @@ impl<V: PaserkVersion> Eq for PaserkLocalPw<V> {}
     feature = "k4"
 ))]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[cfg(feature = "k4")]
@@ -470,7 +471,7 @@ mod tests {
     #[cfg(feature = "k3")]
     use crate::core::version::K3;
 
-    #[cfg(any(feature = "k2", feature = "k4"))]
+    #[cfg(feature = "k4")]
     fn test_argon2_params() -> Argon2Params {
         Argon2Params {
             memory_kib: 1024, // 1 MiB for fast tests
@@ -480,6 +481,7 @@ mod tests {
     }
 
     #[cfg(any(feature = "k1-insecure", feature = "k3"))]
+    #[allow(dead_code)]
     fn test_pbkdf2_params() -> Pbkdf2Params {
         Pbkdf2Params { iterations: 1000 }
     }

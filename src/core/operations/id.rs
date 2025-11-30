@@ -104,6 +104,7 @@ fn compute_id_sha384(header: &str, paserk_string: &str) -> [u8; ID_HASH_SIZE] {
     feature = "k4"
 ))]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]

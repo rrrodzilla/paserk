@@ -504,6 +504,7 @@ mod tests {
     use super::*;
 
     // Use minimal params for fast tests
+    #[cfg(feature = "k4")]
     fn test_params() -> Argon2Params {
         Argon2Params {
             memory_kib: 1024, // 1 MiB

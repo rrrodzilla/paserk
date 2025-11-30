@@ -14,28 +14,13 @@
 ))]
 mod vectors;
 
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
 use std::path::PathBuf;
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
 use vectors::*;
 
 /// Get the path to the test vectors directory.
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
 fn vectors_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/vectors")
 }

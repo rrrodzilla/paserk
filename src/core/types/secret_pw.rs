@@ -12,31 +12,22 @@ use core::marker::PhantomData;
 use base64::prelude::*;
 
 use crate::core::error::PaserkError;
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
-use crate::core::error::PaserkResult;
 use crate::core::version::PaserkVersion;
+
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
+use crate::core::error::PaserkResult;
 
 #[cfg(any(feature = "k2", feature = "k4"))]
 use crate::core::operations::pbkw::{
     Argon2Params, ARGON2_SALT_SIZE, PBKW_TAG_SIZE, XCHACHA20_NONCE_SIZE,
 };
 
-#[cfg(any(feature = "k1-insecure", feature = "k3"))]
+#[cfg(feature = "k3")]
 use crate::core::operations::pbkw::{
     Pbkdf2Params, AES_CTR_NONCE_SIZE, PBKDF2_SALT_SIZE, PBKW_K1K3_TAG_SIZE,
 };
 
-#[cfg(any(
-    feature = "k1-insecure",
-    feature = "k2",
-    feature = "k3",
-    feature = "k4"
-))]
+#[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
 use crate::core::types::PaserkSecret;
 
 /// A secret key wrapped with a password.
@@ -491,6 +482,7 @@ impl<V: PaserkVersion> Eq for PaserkSecretPw<V> {}
     feature = "k4"
 ))]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[cfg(feature = "k4")]
@@ -499,7 +491,7 @@ mod tests {
     #[cfg(feature = "k3")]
     use crate::core::version::K3;
 
-    #[cfg(any(feature = "k2", feature = "k4"))]
+    #[cfg(feature = "k4")]
     fn test_argon2_params() -> Argon2Params {
         Argon2Params {
             memory_kib: 1024, // 1 MiB for fast tests

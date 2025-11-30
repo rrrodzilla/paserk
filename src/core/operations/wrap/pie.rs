@@ -25,6 +25,7 @@ pub const PIE_TAG_SIZE: usize = 32;
     feature = "k3",
     feature = "k4"
 ))]
+#[allow(dead_code)]
 const PIE_ENCRYPTION_KEY_DOMAIN: u8 = 0x80;
 
 /// Domain separation byte for PIE authentication key derivation (0x81).
@@ -34,6 +35,7 @@ const PIE_ENCRYPTION_KEY_DOMAIN: u8 = 0x80;
     feature = "k3",
     feature = "k4"
 ))]
+#[allow(dead_code)]
 const PIE_AUTH_KEY_DOMAIN: u8 = 0x81;
 
 /// Wraps a local (symmetric) key using the PIE protocol for K2/K4.
@@ -673,6 +675,7 @@ pub fn pie_unwrap_secret_k3(
 ))]
 #[allow(deprecated)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
