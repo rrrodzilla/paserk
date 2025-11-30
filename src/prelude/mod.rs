@@ -34,11 +34,35 @@
 //!   - Use `Argon2Params::moderate()` for balanced security
 //!   - Use `Argon2Params::sensitive()` for high-security operations
 //!
-//! # Future Enhancements
+//! ## Builders
 //!
-//! Potential additions:
-//! - Builder patterns for complex operations
-//! - Additional convenience methods
+//! Fluent builder APIs for password-based key wrapping:
+//!
+//! - [`LocalPwBuilder`] - Builder for symmetric key wrapping
+//! - [`SecretPwBuilder`] - Builder for secret key wrapping
+//!
+//! ```rust
+//! use paserk::prelude::*;
+//!
+//! let key = PaserkLocal::<K4>::from([0x42u8; 32]);
+//!
+//! // Use preset profiles
+//! let wrapped = LocalPwBuilder::<K4>::moderate()
+//!     .try_wrap(&key, b"password")
+//!     .expect("wrap should succeed");
+//!
+//! // Or customize parameters
+//! let wrapped = LocalPwBuilder::<K4>::new()
+//!     .memory_kib(128 * 1024)
+//!     .iterations(3)
+//!     .try_wrap(&key, b"password")
+//!     .expect("wrap should succeed");
+//! ```
+
+mod builders;
+
+// Re-export builders
+pub use builders::{LocalPwBuilder, SecretPwBuilder};
 
 // Re-export core types for convenience
 pub use crate::core::error::{PaserkError, PaserkResult};

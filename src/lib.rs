@@ -95,6 +95,29 @@
 //!
 //! - [`core`] - Core types and operations
 //! - [`prelude`] - Ergonomic imports (requires `prelude` feature)
+//!
+//! # Builder Patterns
+//!
+//! The `prelude` module provides fluent builder APIs for password-based wrapping:
+//!
+//! ```rust
+//! use paserk::prelude::*;
+//!
+//! let key = PaserkLocal::<K4>::from([0x42u8; 32]);
+//!
+//! // Use preset security profiles
+//! let wrapped = LocalPwBuilder::<K4>::moderate()
+//!     .try_wrap(&key, b"password")
+//!     .expect("wrap should succeed");
+//!
+//! // Or customize parameters
+//! let wrapped = LocalPwBuilder::<K4>::new()
+//!     .memory_kib(128 * 1024)
+//!     .iterations(3)
+//!     .parallelism(2)
+//!     .try_wrap(&key, b"password")
+//!     .expect("wrap should succeed");
+//! ```
 
 pub mod core;
 
