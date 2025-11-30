@@ -122,7 +122,8 @@
 //!
 //! The `prelude` module provides fluent builder APIs for password-based wrapping:
 //!
-//! ```rust
+//! ```rust,ignore
+//! // Requires the `k4` and `prelude` features
 //! use paserk::prelude::*;
 //!
 //! # fn main() -> Result<(), paserk::PaserkError> {

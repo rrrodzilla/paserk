@@ -18,7 +18,8 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```rust,ignore
+//! // Requires the `k4` feature
 //! use paserk::core::types::{PaserkLocal, PaserkLocalWrap};
 //! use paserk::core::operations::wrap::Pie;
 //! use paserk::core::version::K4;

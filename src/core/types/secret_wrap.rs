@@ -41,7 +41,8 @@ const PIE_WRAP_NONCE_SIZE: usize = PIE_NONCE_SIZE;
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
+/// // Requires the `k4` feature
 /// use paserk::core::types::{PaserkLocal, PaserkSecret, PaserkSecretWrap};
 /// use paserk::core::operations::wrap::Pie;
 /// use paserk::core::version::K4;

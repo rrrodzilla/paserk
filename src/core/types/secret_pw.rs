@@ -45,7 +45,8 @@ use crate::core::types::PaserkSecret;
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
+/// // Requires the `k4` feature
 /// use paserk::core::types::{PaserkSecret, PaserkSecretPw};
 /// use paserk::core::operations::pbkw::Argon2Params;
 /// use paserk::core::version::K4;
