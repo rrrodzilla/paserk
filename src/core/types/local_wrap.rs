@@ -15,6 +15,9 @@ use crate::core::operations::wrap::{Pie, WrapProtocol, PIE_NONCE_SIZE, PIE_TAG_S
 use crate::core::types::PaserkLocal;
 use crate::core::version::PaserkVersion;
 
+/// PIE nonce size (same for all versions).
+const PIE_WRAP_NONCE_SIZE: usize = PIE_NONCE_SIZE;
+
 /// A symmetric key wrapped with another symmetric key.
 ///
 /// Format: `k{version}.local-wrap.{protocol}.{base64url(nonce || ciphertext || tag)}`
@@ -27,6 +30,11 @@ use crate::core::version::PaserkVersion;
 /// - The wrapped key material is encrypted
 /// - Authentication tag prevents tampering
 /// - Safe to include in PASETO token footers
+///
+/// # Version Differences
+///
+/// - K2/K4: Uses XChaCha20 + BLAKE2b with 32-byte tags
+/// - K1/K3: Uses AES-256-CTR + HMAC-SHA384 with 48-byte tags
 ///
 /// # Example
 ///
@@ -56,11 +64,11 @@ use crate::core::version::PaserkVersion;
 #[derive(Clone)]
 pub struct PaserkLocalWrap<V: PaserkVersion, P: WrapProtocol> {
     /// The random nonce (32 bytes for PIE).
-    nonce: [u8; PIE_NONCE_SIZE],
+    nonce: [u8; PIE_WRAP_NONCE_SIZE],
     /// The encrypted key (32 bytes for local keys).
     ciphertext: [u8; 32],
-    /// The authentication tag (32 bytes for PIE).
-    tag: [u8; PIE_TAG_SIZE],
+    /// The authentication tag (32 bytes for K2/K4, 48 bytes for K1/K3).
+    tag: Vec<u8>,
     /// Version marker.
     _version: PhantomData<V>,
     /// Protocol marker.
@@ -78,7 +86,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
     }
 
     /// Creates a new `PaserkLocalWrap` from raw components.
-    fn new(nonce: [u8; PIE_NONCE_SIZE], ciphertext: [u8; 32], tag: [u8; PIE_TAG_SIZE]) -> Self {
+    fn new(nonce: [u8; PIE_WRAP_NONCE_SIZE], ciphertext: [u8; 32], tag: Vec<u8>) -> Self {
         Self {
             nonce,
             ciphertext,
@@ -90,7 +98,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
 
     /// Returns a reference to the nonce bytes.
     #[must_use]
-    pub const fn nonce(&self) -> &[u8; PIE_NONCE_SIZE] {
+    pub const fn nonce(&self) -> &[u8; PIE_WRAP_NONCE_SIZE] {
         &self.nonce
     }
 
@@ -102,34 +110,30 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
 
     /// Returns a reference to the tag bytes.
     #[must_use]
-    pub const fn tag(&self) -> &[u8; PIE_TAG_SIZE] {
+    pub fn tag(&self) -> &[u8] {
         &self.tag
+    }
+
+    /// Returns the expected tag size for this version.
+    fn expected_tag_size() -> usize {
+        match V::VERSION {
+            2 | 4 => PIE_TAG_SIZE, // 32 bytes - BLAKE2b
+            1 | 3 => 48,           // 48 bytes - HMAC-SHA384
+            _ => PIE_TAG_SIZE,
+        }
     }
 }
 
 // =============================================================================
-// PIE wrapping for K2/K4
+// PIE wrapping for K2 (XChaCha20 + BLAKE2b, 32-byte tag)
 // =============================================================================
 
-#[cfg(any(feature = "k2", feature = "k4"))]
-impl<V: PaserkVersion + crate::core::version::UsesXChaCha20> PaserkLocalWrap<V, Pie> {
+#[cfg(feature = "k2")]
+impl PaserkLocalWrap<crate::core::version::K2, Pie> {
     /// Wraps a symmetric key using the PIE protocol.
-    ///
-    /// # Arguments
-    ///
-    /// * `key_to_wrap` - The symmetric key to wrap
-    /// * `wrapping_key` - The symmetric key to use for wrapping
-    ///
-    /// # Returns
-    ///
-    /// A new `PaserkLocalWrap` containing the wrapped key.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the cryptographic operation fails.
     pub fn try_wrap(
-        key_to_wrap: &PaserkLocal<V>,
-        wrapping_key: &PaserkLocal<V>,
+        key_to_wrap: &PaserkLocal<crate::core::version::K2>,
+        wrapping_key: &PaserkLocal<crate::core::version::K2>,
     ) -> PaserkResult<Self> {
         use crate::core::operations::wrap::pie_wrap_local_k2k4;
 
@@ -137,28 +141,168 @@ impl<V: PaserkVersion + crate::core::version::UsesXChaCha20> PaserkLocalWrap<V, 
         let (nonce, ciphertext, tag) =
             pie_wrap_local_k2k4(wrapping_key.as_bytes(), key_to_wrap.as_bytes(), &header)?;
 
-        Ok(Self::new(nonce, ciphertext, tag))
+        Ok(Self::new(nonce, ciphertext, tag.to_vec()))
     }
 
     /// Unwraps the encrypted key using the PIE protocol.
-    ///
-    /// # Arguments
-    ///
-    /// * `wrapping_key` - The symmetric key that was used for wrapping
-    ///
-    /// # Returns
-    ///
-    /// The original unwrapped symmetric key.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if authentication fails or the key is invalid.
-    pub fn try_unwrap(&self, wrapping_key: &PaserkLocal<V>) -> PaserkResult<PaserkLocal<V>> {
+    pub fn try_unwrap(
+        &self,
+        wrapping_key: &PaserkLocal<crate::core::version::K2>,
+    ) -> PaserkResult<PaserkLocal<crate::core::version::K2>> {
         use crate::core::operations::wrap::pie_unwrap_local_k2k4;
 
+        if self.tag.len() != PIE_TAG_SIZE {
+            return Err(PaserkError::InvalidKey);
+        }
+        let mut tag = [0u8; PIE_TAG_SIZE];
+        tag.copy_from_slice(&self.tag);
+
         let header = Self::header();
-        let plaintext =
-            pie_unwrap_local_k2k4(wrapping_key.as_bytes(), &self.nonce, &self.ciphertext, &self.tag, &header)?;
+        let plaintext = pie_unwrap_local_k2k4(
+            wrapping_key.as_bytes(),
+            &self.nonce,
+            &self.ciphertext,
+            &tag,
+            &header,
+        )?;
+
+        Ok(PaserkLocal::from(plaintext))
+    }
+}
+
+// =============================================================================
+// PIE wrapping for K4 (XChaCha20 + BLAKE2b, 32-byte tag)
+// =============================================================================
+
+#[cfg(feature = "k4")]
+impl PaserkLocalWrap<crate::core::version::K4, Pie> {
+    /// Wraps a symmetric key using the PIE protocol.
+    pub fn try_wrap(
+        key_to_wrap: &PaserkLocal<crate::core::version::K4>,
+        wrapping_key: &PaserkLocal<crate::core::version::K4>,
+    ) -> PaserkResult<Self> {
+        use crate::core::operations::wrap::pie_wrap_local_k2k4;
+
+        let header = Self::header();
+        let (nonce, ciphertext, tag) =
+            pie_wrap_local_k2k4(wrapping_key.as_bytes(), key_to_wrap.as_bytes(), &header)?;
+
+        Ok(Self::new(nonce, ciphertext, tag.to_vec()))
+    }
+
+    /// Unwraps the encrypted key using the PIE protocol.
+    pub fn try_unwrap(
+        &self,
+        wrapping_key: &PaserkLocal<crate::core::version::K4>,
+    ) -> PaserkResult<PaserkLocal<crate::core::version::K4>> {
+        use crate::core::operations::wrap::pie_unwrap_local_k2k4;
+
+        if self.tag.len() != PIE_TAG_SIZE {
+            return Err(PaserkError::InvalidKey);
+        }
+        let mut tag = [0u8; PIE_TAG_SIZE];
+        tag.copy_from_slice(&self.tag);
+
+        let header = Self::header();
+        let plaintext = pie_unwrap_local_k2k4(
+            wrapping_key.as_bytes(),
+            &self.nonce,
+            &self.ciphertext,
+            &tag,
+            &header,
+        )?;
+
+        Ok(PaserkLocal::from(plaintext))
+    }
+}
+
+// =============================================================================
+// PIE wrapping for K1 (AES-256-CTR + HMAC-SHA384, 48-byte tag)
+// =============================================================================
+
+#[cfg(feature = "k1")]
+impl PaserkLocalWrap<crate::core::version::K1, Pie> {
+    /// Wraps a symmetric key using the PIE protocol for K1.
+    pub fn try_wrap(
+        key_to_wrap: &PaserkLocal<crate::core::version::K1>,
+        wrapping_key: &PaserkLocal<crate::core::version::K1>,
+    ) -> PaserkResult<Self> {
+        use crate::core::operations::wrap::pie_wrap_local_k1k3;
+
+        let header = Self::header();
+        let (nonce, ciphertext, tag) =
+            pie_wrap_local_k1k3(wrapping_key.as_bytes(), key_to_wrap.as_bytes(), &header)?;
+
+        Ok(Self::new(nonce, ciphertext, tag.to_vec()))
+    }
+
+    /// Unwraps the encrypted key using the PIE protocol for K1.
+    pub fn try_unwrap(
+        &self,
+        wrapping_key: &PaserkLocal<crate::core::version::K1>,
+    ) -> PaserkResult<PaserkLocal<crate::core::version::K1>> {
+        use crate::core::operations::wrap::{pie_unwrap_local_k1k3, PIE_K1K3_TAG_SIZE};
+
+        if self.tag.len() != PIE_K1K3_TAG_SIZE {
+            return Err(PaserkError::InvalidKey);
+        }
+        let mut tag = [0u8; PIE_K1K3_TAG_SIZE];
+        tag.copy_from_slice(&self.tag);
+
+        let header = Self::header();
+        let plaintext = pie_unwrap_local_k1k3(
+            wrapping_key.as_bytes(),
+            &self.nonce,
+            &self.ciphertext,
+            &tag,
+            &header,
+        )?;
+
+        Ok(PaserkLocal::from(plaintext))
+    }
+}
+
+// =============================================================================
+// PIE wrapping for K3 (AES-256-CTR + HMAC-SHA384, 48-byte tag)
+// =============================================================================
+
+#[cfg(feature = "k3")]
+impl PaserkLocalWrap<crate::core::version::K3, Pie> {
+    /// Wraps a symmetric key using the PIE protocol for K3.
+    pub fn try_wrap(
+        key_to_wrap: &PaserkLocal<crate::core::version::K3>,
+        wrapping_key: &PaserkLocal<crate::core::version::K3>,
+    ) -> PaserkResult<Self> {
+        use crate::core::operations::wrap::pie_wrap_local_k1k3;
+
+        let header = Self::header();
+        let (nonce, ciphertext, tag) =
+            pie_wrap_local_k1k3(wrapping_key.as_bytes(), key_to_wrap.as_bytes(), &header)?;
+
+        Ok(Self::new(nonce, ciphertext, tag.to_vec()))
+    }
+
+    /// Unwraps the encrypted key using the PIE protocol for K3.
+    pub fn try_unwrap(
+        &self,
+        wrapping_key: &PaserkLocal<crate::core::version::K3>,
+    ) -> PaserkResult<PaserkLocal<crate::core::version::K3>> {
+        use crate::core::operations::wrap::{pie_unwrap_local_k1k3, PIE_K1K3_TAG_SIZE};
+
+        if self.tag.len() != PIE_K1K3_TAG_SIZE {
+            return Err(PaserkError::InvalidKey);
+        }
+        let mut tag = [0u8; PIE_K1K3_TAG_SIZE];
+        tag.copy_from_slice(&self.tag);
+
+        let header = Self::header();
+        let plaintext = pie_unwrap_local_k1k3(
+            wrapping_key.as_bytes(),
+            &self.nonce,
+            &self.ciphertext,
+            &tag,
+            &header,
+        )?;
 
         Ok(PaserkLocal::from(plaintext))
     }
@@ -171,7 +315,7 @@ impl<V: PaserkVersion + crate::core::version::UsesXChaCha20> PaserkLocalWrap<V, 
 impl<V: PaserkVersion, P: WrapProtocol> Display for PaserkLocalWrap<V, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Concatenate nonce || ciphertext || tag
-        let mut data = Vec::with_capacity(PIE_NONCE_SIZE + 32 + PIE_TAG_SIZE);
+        let mut data = Vec::with_capacity(PIE_WRAP_NONCE_SIZE + 32 + self.tag.len());
         data.extend_from_slice(&self.nonce);
         data.extend_from_slice(&self.ciphertext);
         data.extend_from_slice(&self.tag);
@@ -238,18 +382,18 @@ impl<V: PaserkVersion, P: WrapProtocol> TryFrom<&str> for PaserkLocalWrap<V, P> 
             .decode(encoded_data)
             .map_err(PaserkError::Base64Decode)?;
 
-        let expected_len = PIE_NONCE_SIZE + 32 + PIE_TAG_SIZE;
+        let tag_size = Self::expected_tag_size();
+        let expected_len = PIE_WRAP_NONCE_SIZE + 32 + tag_size;
         if data.len() != expected_len {
             return Err(PaserkError::InvalidKey);
         }
 
-        let mut nonce = [0u8; PIE_NONCE_SIZE];
+        let mut nonce = [0u8; PIE_WRAP_NONCE_SIZE];
         let mut ciphertext = [0u8; 32];
-        let mut tag = [0u8; PIE_TAG_SIZE];
 
-        nonce.copy_from_slice(&data[..PIE_NONCE_SIZE]);
-        ciphertext.copy_from_slice(&data[PIE_NONCE_SIZE..PIE_NONCE_SIZE + 32]);
-        tag.copy_from_slice(&data[PIE_NONCE_SIZE + 32..]);
+        nonce.copy_from_slice(&data[..PIE_WRAP_NONCE_SIZE]);
+        ciphertext.copy_from_slice(&data[PIE_WRAP_NONCE_SIZE..PIE_WRAP_NONCE_SIZE + 32]);
+        let tag = data[PIE_WRAP_NONCE_SIZE + 32..].to_vec();
 
         Ok(Self::new(nonce, ciphertext, tag))
     }
@@ -381,6 +525,109 @@ mod tests {
         assert!(debug_str.contains("k4"));
         assert!(debug_str.contains("pie"));
         assert!(debug_str.contains("[ENCRYPTED]"));
+        Ok(())
+    }
+
+    // =========================================================================
+    // K1/K3 Tests
+    // =========================================================================
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_k3_wrap_unwrap_roundtrip() -> PaserkResult<()> {
+        use crate::core::version::K3;
+
+        let wrapping_key = PaserkLocal::<K3>::from([0x42u8; 32]);
+        let key_to_wrap = PaserkLocal::<K3>::from([0x13u8; 32]);
+
+        let wrapped = PaserkLocalWrap::<K3, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
+
+        let unwrapped = wrapped.try_unwrap(&wrapping_key)?;
+
+        assert_eq!(unwrapped.as_bytes(), key_to_wrap.as_bytes());
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_k3_serialize_parse_roundtrip() -> PaserkResult<()> {
+        use crate::core::version::K3;
+
+        let wrapping_key = PaserkLocal::<K3>::from([0x42u8; 32]);
+        let key_to_wrap = PaserkLocal::<K3>::from([0x13u8; 32]);
+
+        let wrapped = PaserkLocalWrap::<K3, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
+
+        let serialized = wrapped.to_string();
+        assert!(serialized.starts_with("k3.local-wrap.pie."));
+
+        let parsed = PaserkLocalWrap::<K3, Pie>::try_from(serialized.as_str())?;
+
+        assert_eq!(wrapped, parsed);
+
+        let unwrapped = parsed.try_unwrap(&wrapping_key)?;
+
+        assert_eq!(unwrapped.as_bytes(), key_to_wrap.as_bytes());
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_wrap_unwrap_roundtrip() -> PaserkResult<()> {
+        use crate::core::version::K1;
+
+        let wrapping_key = PaserkLocal::<K1>::from([0x42u8; 32]);
+        let key_to_wrap = PaserkLocal::<K1>::from([0x13u8; 32]);
+
+        let wrapped = PaserkLocalWrap::<K1, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
+
+        let unwrapped = wrapped.try_unwrap(&wrapping_key)?;
+
+        assert_eq!(unwrapped.as_bytes(), key_to_wrap.as_bytes());
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_k3_unwrap_wrong_key() -> PaserkResult<()> {
+        use crate::core::version::K3;
+
+        let wrapping_key = PaserkLocal::<K3>::from([0x42u8; 32]);
+        let wrong_key = PaserkLocal::<K3>::from([0x43u8; 32]);
+        let key_to_wrap = PaserkLocal::<K3>::from([0x13u8; 32]);
+
+        let wrapped = PaserkLocalWrap::<K3, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
+
+        let result = wrapped.try_unwrap(&wrong_key);
+        assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_k3_tag_size() -> PaserkResult<()> {
+        use crate::core::version::K3;
+
+        let wrapping_key = PaserkLocal::<K3>::from([0x42u8; 32]);
+        let key_to_wrap = PaserkLocal::<K3>::from([0x13u8; 32]);
+
+        let wrapped = PaserkLocalWrap::<K3, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
+
+        // K3 uses HMAC-SHA384 with 48-byte tag
+        assert_eq!(wrapped.tag().len(), 48);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k4")]
+    fn test_k4_tag_size() -> PaserkResult<()> {
+        let wrapping_key = PaserkLocal::<K4>::from([0x42u8; 32]);
+        let key_to_wrap = PaserkLocal::<K4>::from([0x13u8; 32]);
+
+        let wrapped = PaserkLocalWrap::<K4, Pie>::try_wrap(&key_to_wrap, &wrapping_key)?;
+
+        // K4 uses BLAKE2b with 32-byte tag
+        assert_eq!(wrapped.tag().len(), 32);
         Ok(())
     }
 }

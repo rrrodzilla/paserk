@@ -1,10 +1,15 @@
 //! Public key encryption (PKE) operations.
 //!
 //! This module provides public key encryption for symmetric keys using
-//! X25519 (K2/K4). K1/K3 support is planned for future releases.
+//! X25519 (K2/K4) or P-384 ECDH (K3).
 //!
 //! Types:
 //! - `seal` - Symmetric key encrypted with public key
+//!
+//! # Version Differences
+//!
+//! - K2/K4: Uses X25519 ECDH + XChaCha20 + BLAKE2b (32-byte tags)
+//! - K3: Uses P-384 ECDH + AES-256-CTR + HMAC-SHA384 (48-byte tags)
 //!
 //! # Security
 //!
@@ -41,8 +46,20 @@
 #[cfg(any(feature = "k2", feature = "k4"))]
 mod seal_k2k4;
 
+#[cfg(feature = "k3")]
+mod seal_k3;
+
 #[cfg(any(feature = "k2", feature = "k4"))]
 pub use seal_k2k4::{EPHEMERAL_PK_SIZE, SEAL_CIPHERTEXT_SIZE, SEAL_DATA_SIZE, SEAL_TAG_SIZE};
 
 #[cfg(any(feature = "k2", feature = "k4"))]
 pub(crate) use seal_k2k4::{seal_k2k4, unseal_k2k4};
+
+// K3 seal exports
+#[cfg(feature = "k3")]
+pub use seal_k3::{
+    K3_EPHEMERAL_PK_SIZE, K3_SEAL_CIPHERTEXT_SIZE, K3_SEAL_DATA_SIZE, K3_SEAL_TAG_SIZE,
+};
+
+#[cfg(feature = "k3")]
+pub(crate) use seal_k3::{seal_k3, unseal_k3};

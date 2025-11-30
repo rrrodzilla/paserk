@@ -309,6 +309,263 @@ pub fn pie_unwrap_secret_k2k4(
     }
 }
 
+// =============================================================================
+// K1/K3 PIE Protocol Implementation (AES-256-CTR + HMAC-SHA384)
+// =============================================================================
+
+/// Nonce size for K1/K3 PIE protocol (32 bytes).
+pub const PIE_K1K3_NONCE_SIZE: usize = 32;
+
+/// Tag size for K1/K3 PIE protocol (48 bytes - HMAC-SHA384).
+pub const PIE_K1K3_TAG_SIZE: usize = 48;
+
+/// Domain separation string for K1/K3 PIE KDF.
+#[cfg(any(feature = "k1", feature = "k3"))]
+const PIE_K1K3_KDF_DOMAIN: &[u8] = b"paserk-wrap.pie.";
+
+/// Domain separation string for K1/K3 PIE authentication key derivation.
+#[cfg(any(feature = "k1", feature = "k3"))]
+const PIE_K1K3_AUTH_KEY_DOMAIN: &[u8] = b"auth-key-for-tag";
+
+/// Derives encryption and authentication keys for K1/K3 PIE using HMAC-SHA384.
+///
+/// # Arguments
+///
+/// * `wrapping_key` - The 32-byte symmetric wrapping key
+/// * `nonce` - The 32-byte random nonce
+///
+/// # Returns
+///
+/// A tuple of (encryption_key, aes_nonce, auth_key) where:
+/// - encryption_key is 32 bytes
+/// - aes_nonce is 16 bytes
+/// - auth_key is 48 bytes (full HMAC-SHA384 output)
+#[cfg(any(feature = "k1", feature = "k3"))]
+fn derive_pie_keys_k1k3(
+    wrapping_key: &[u8; 32],
+    nonce: &[u8; PIE_K1K3_NONCE_SIZE],
+) -> PaserkResult<([u8; 32], [u8; 16], [u8; 48])> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha384;
+
+    // Derive tmp = HMAC-SHA384(key=wrapping_key, msg="paserk-wrap.pie." || nonce)
+    // Use first 32 bytes as Ek, next 16 bytes as AES-CTR nonce
+    let mut kdf_mac = <Hmac<Sha384> as Mac>::new_from_slice(wrapping_key)
+        .map_err(|_| PaserkError::CryptoError)?;
+    kdf_mac.update(PIE_K1K3_KDF_DOMAIN);
+    kdf_mac.update(nonce);
+    let tmp = kdf_mac.finalize().into_bytes();
+
+    let mut encryption_key = [0u8; 32];
+    encryption_key.copy_from_slice(&tmp[..32]);
+
+    let mut aes_nonce = [0u8; 16];
+    aes_nonce.copy_from_slice(&tmp[32..48]);
+
+    // Derive authentication key
+    // Ak = HMAC-SHA384(key=wrapping_key, msg="paserk-wrap.pie." || nonce || "auth-key-for-tag")
+    let mut auth_mac = <Hmac<Sha384> as Mac>::new_from_slice(wrapping_key)
+        .map_err(|_| PaserkError::CryptoError)?;
+    auth_mac.update(PIE_K1K3_KDF_DOMAIN);
+    auth_mac.update(nonce);
+    auth_mac.update(PIE_K1K3_AUTH_KEY_DOMAIN);
+    let auth_key: [u8; 48] = auth_mac.finalize().into_bytes().into();
+
+    Ok((encryption_key, aes_nonce, auth_key))
+}
+
+/// Computes the authentication tag for K1/K3 PIE using HMAC-SHA384.
+#[cfg(any(feature = "k1", feature = "k3"))]
+fn compute_pie_tag_k1k3(
+    auth_key: &[u8; 48],
+    header: &str,
+    nonce: &[u8],
+    ciphertext: &[u8],
+) -> PaserkResult<[u8; PIE_K1K3_TAG_SIZE]> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha384;
+
+    let mut tag_mac =
+        <Hmac<Sha384> as Mac>::new_from_slice(auth_key).map_err(|_| PaserkError::CryptoError)?;
+    tag_mac.update(header.as_bytes());
+    tag_mac.update(nonce);
+    tag_mac.update(ciphertext);
+    Ok(tag_mac.finalize().into_bytes().into())
+}
+
+/// Encrypts/decrypts data using AES-256-CTR for PIE.
+#[cfg(any(feature = "k1", feature = "k3"))]
+fn aes_ctr_apply(key: &[u8; 32], nonce: &[u8; 16], data: &mut [u8]) {
+    use aes::cipher::{KeyIvInit, StreamCipher};
+    use ctr::Ctr128BE;
+
+    type Aes256Ctr = Ctr128BE<aes::Aes256>;
+    let mut cipher = Aes256Ctr::new(key.into(), nonce.into());
+    cipher.apply_keystream(data);
+}
+
+/// Wraps a local (symmetric) key using the PIE protocol for K1/K3.
+///
+/// # Arguments
+///
+/// * `wrapping_key` - The 32-byte symmetric key used for wrapping
+/// * `plaintext_key` - The 32-byte key to wrap
+/// * `header` - The PASERK header (e.g., "k3.local-wrap.pie.")
+///
+/// # Returns
+///
+/// A tuple of (nonce, ciphertext, tag) where:
+/// - nonce is 32 bytes
+/// - ciphertext is 32 bytes
+/// - tag is 48 bytes (HMAC-SHA384)
+#[cfg(any(feature = "k1", feature = "k3"))]
+pub fn pie_wrap_local_k1k3(
+    wrapping_key: &[u8; 32],
+    plaintext_key: &[u8; 32],
+    header: &str,
+) -> PaserkResult<([u8; PIE_K1K3_NONCE_SIZE], [u8; 32], [u8; PIE_K1K3_TAG_SIZE])> {
+    use rand_core::{OsRng, TryRngCore};
+
+    // Generate random nonce
+    let mut nonce = [0u8; PIE_K1K3_NONCE_SIZE];
+    OsRng
+        .try_fill_bytes(&mut nonce)
+        .map_err(|_| PaserkError::CryptoError)?;
+
+    // Derive keys
+    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, &nonce)?;
+
+    // Encrypt the plaintext key
+    let mut ciphertext = *plaintext_key;
+    aes_ctr_apply(&encryption_key, &aes_nonce, &mut ciphertext);
+
+    // Compute authentication tag
+    let tag = compute_pie_tag_k1k3(&auth_key, header, &nonce, &ciphertext)?;
+
+    Ok((nonce, ciphertext, tag))
+}
+
+/// Unwraps a local (symmetric) key using the PIE protocol for K1/K3.
+///
+/// # Arguments
+///
+/// * `wrapping_key` - The 32-byte symmetric key used for unwrapping
+/// * `nonce` - The 32-byte nonce from the wrapped key
+/// * `ciphertext` - The 32-byte encrypted key
+/// * `tag` - The 48-byte authentication tag
+/// * `header` - The PASERK header (e.g., "k3.local-wrap.pie.")
+///
+/// # Returns
+///
+/// The unwrapped 32-byte plaintext key.
+#[cfg(any(feature = "k1", feature = "k3"))]
+pub fn pie_unwrap_local_k1k3(
+    wrapping_key: &[u8; 32],
+    nonce: &[u8; PIE_K1K3_NONCE_SIZE],
+    ciphertext: &[u8; 32],
+    tag: &[u8; PIE_K1K3_TAG_SIZE],
+    header: &str,
+) -> PaserkResult<[u8; 32]> {
+    use subtle::ConstantTimeEq;
+
+    // Derive keys
+    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, nonce)?;
+
+    // Verify authentication tag
+    let computed_tag = compute_pie_tag_k1k3(&auth_key, header, nonce, ciphertext)?;
+
+    // Constant-time tag comparison
+    if computed_tag.ct_eq(tag).into() {
+        // Decrypt the ciphertext
+        let mut plaintext = *ciphertext;
+        aes_ctr_apply(&encryption_key, &aes_nonce, &mut plaintext);
+        Ok(plaintext)
+    } else {
+        Err(PaserkError::AuthenticationFailed)
+    }
+}
+
+/// Wraps a P-384 secret key using the PIE protocol for K3.
+///
+/// # Arguments
+///
+/// * `wrapping_key` - The 32-byte symmetric key used for wrapping
+/// * `plaintext_key` - The 48-byte P-384 secret key to wrap
+/// * `header` - The PASERK header (e.g., "k3.secret-wrap.pie.")
+///
+/// # Returns
+///
+/// A tuple of (nonce, ciphertext, tag) where:
+/// - nonce is 32 bytes
+/// - ciphertext is 48 bytes
+/// - tag is 48 bytes (HMAC-SHA384)
+#[cfg(feature = "k3")]
+pub fn pie_wrap_secret_k3(
+    wrapping_key: &[u8; 32],
+    plaintext_key: &[u8; 48],
+    header: &str,
+) -> PaserkResult<([u8; PIE_K1K3_NONCE_SIZE], [u8; 48], [u8; PIE_K1K3_TAG_SIZE])> {
+    use rand_core::{OsRng, TryRngCore};
+
+    // Generate random nonce
+    let mut nonce = [0u8; PIE_K1K3_NONCE_SIZE];
+    OsRng
+        .try_fill_bytes(&mut nonce)
+        .map_err(|_| PaserkError::CryptoError)?;
+
+    // Derive keys
+    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, &nonce)?;
+
+    // Encrypt the plaintext key
+    let mut ciphertext = *plaintext_key;
+    aes_ctr_apply(&encryption_key, &aes_nonce, &mut ciphertext);
+
+    // Compute authentication tag
+    let tag = compute_pie_tag_k1k3(&auth_key, header, &nonce, &ciphertext)?;
+
+    Ok((nonce, ciphertext, tag))
+}
+
+/// Unwraps a P-384 secret key using the PIE protocol for K3.
+///
+/// # Arguments
+///
+/// * `wrapping_key` - The 32-byte symmetric key used for unwrapping
+/// * `nonce` - The 32-byte nonce from the wrapped key
+/// * `ciphertext` - The 48-byte encrypted key
+/// * `tag` - The 48-byte authentication tag
+/// * `header` - The PASERK header (e.g., "k3.secret-wrap.pie.")
+///
+/// # Returns
+///
+/// The unwrapped 48-byte P-384 secret key.
+#[cfg(feature = "k3")]
+pub fn pie_unwrap_secret_k3(
+    wrapping_key: &[u8; 32],
+    nonce: &[u8; PIE_K1K3_NONCE_SIZE],
+    ciphertext: &[u8; 48],
+    tag: &[u8; PIE_K1K3_TAG_SIZE],
+    header: &str,
+) -> PaserkResult<[u8; 48]> {
+    use subtle::ConstantTimeEq;
+
+    // Derive keys
+    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, nonce)?;
+
+    // Verify authentication tag
+    let computed_tag = compute_pie_tag_k1k3(&auth_key, header, nonce, ciphertext)?;
+
+    // Constant-time tag comparison
+    if computed_tag.ct_eq(tag).into() {
+        // Decrypt the ciphertext
+        let mut plaintext = *ciphertext;
+        aes_ctr_apply(&encryption_key, &aes_nonce, &mut plaintext);
+        Ok(plaintext)
+    } else {
+        Err(PaserkError::AuthenticationFailed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,6 +697,132 @@ mod tests {
             pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
         let (nonce2, _, _) =
             pie_wrap_local_k2k4(&wrapping_key, &plaintext_key, header)?;
+
+        // Nonces should be different (probabilistically)
+        assert_ne!(nonce1, nonce2);
+        Ok(())
+    }
+
+    // =========================================================================
+    // K1/K3 PIE Tests
+    // =========================================================================
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_pie_wrap_unwrap_local_k3_roundtrip() -> PaserkResult<()> {
+        let wrapping_key = [0x42u8; 32];
+        let plaintext_key = [0x13u8; 32];
+        let header = "k3.local-wrap.pie.";
+
+        let (nonce, ciphertext, tag) =
+            pie_wrap_local_k1k3(&wrapping_key, &plaintext_key, header)?;
+
+        // Ciphertext should be different from plaintext
+        assert_ne!(ciphertext, plaintext_key);
+
+        let unwrapped =
+            pie_unwrap_local_k1k3(&wrapping_key, &nonce, &ciphertext, &tag, header)?;
+
+        assert_eq!(unwrapped, plaintext_key);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_pie_wrap_unwrap_local_k1_roundtrip() -> PaserkResult<()> {
+        let wrapping_key = [0x42u8; 32];
+        let plaintext_key = [0x13u8; 32];
+        let header = "k1.local-wrap.pie.";
+
+        let (nonce, ciphertext, tag) =
+            pie_wrap_local_k1k3(&wrapping_key, &plaintext_key, header)?;
+
+        // Ciphertext should be different from plaintext
+        assert_ne!(ciphertext, plaintext_key);
+
+        let unwrapped =
+            pie_unwrap_local_k1k3(&wrapping_key, &nonce, &ciphertext, &tag, header)?;
+
+        assert_eq!(unwrapped, plaintext_key);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_pie_wrap_unwrap_secret_k3_roundtrip() -> PaserkResult<()> {
+        let wrapping_key = [0x42u8; 32];
+        let plaintext_key = [0x13u8; 48];
+        let header = "k3.secret-wrap.pie.";
+
+        let (nonce, ciphertext, tag) =
+            pie_wrap_secret_k3(&wrapping_key, &plaintext_key, header)?;
+
+        // Ciphertext should be different from plaintext
+        assert_ne!(ciphertext, plaintext_key);
+
+        let unwrapped =
+            pie_unwrap_secret_k3(&wrapping_key, &nonce, &ciphertext, &tag, header)?;
+
+        assert_eq!(unwrapped, plaintext_key);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_pie_k1k3_unwrap_wrong_key() -> PaserkResult<()> {
+        let wrapping_key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+        let plaintext_key = [0x13u8; 32];
+        let header = "k3.local-wrap.pie.";
+
+        let (nonce, ciphertext, tag) =
+            pie_wrap_local_k1k3(&wrapping_key, &plaintext_key, header)?;
+
+        let result =
+            pie_unwrap_local_k1k3(&wrong_key, &nonce, &ciphertext, &tag, header);
+
+        assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_pie_k1k3_unwrap_modified_tag() -> PaserkResult<()> {
+        let wrapping_key = [0x42u8; 32];
+        let plaintext_key = [0x13u8; 32];
+        let header = "k3.local-wrap.pie.";
+
+        let (nonce, ciphertext, mut tag) =
+            pie_wrap_local_k1k3(&wrapping_key, &plaintext_key, header)?;
+
+        // Modify tag
+        tag[0] ^= 0xff;
+
+        let result =
+            pie_unwrap_local_k1k3(&wrapping_key, &nonce, &ciphertext, &tag, header);
+
+        assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_pie_k1k3_tag_size() {
+        // K1/K3 uses HMAC-SHA384 with 48-byte tags
+        assert_eq!(PIE_K1K3_TAG_SIZE, 48);
+    }
+
+    #[test]
+    #[cfg(feature = "k3")]
+    fn test_pie_k1k3_produces_different_nonces() -> PaserkResult<()> {
+        let wrapping_key = [0x42u8; 32];
+        let plaintext_key = [0x13u8; 32];
+        let header = "k3.local-wrap.pie.";
+
+        let (nonce1, _, _) =
+            pie_wrap_local_k1k3(&wrapping_key, &plaintext_key, header)?;
+        let (nonce2, _, _) =
+            pie_wrap_local_k1k3(&wrapping_key, &plaintext_key, header)?;
 
         // Nonces should be different (probabilistically)
         assert_ne!(nonce1, nonce2);
