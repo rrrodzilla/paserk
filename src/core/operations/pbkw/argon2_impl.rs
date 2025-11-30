@@ -1,7 +1,7 @@
 //! Argon2id-based PBKW implementation for K2/K4.
 //!
 //! This module implements password-based key wrapping using Argon2id for
-//! key derivation and XChaCha20 + BLAKE2b for authenticated encryption.
+//! key derivation and `XChaCha20` + `BLAKE2b` for authenticated encryption.
 
 use crate::core::error::{PaserkError, PaserkResult};
 
@@ -9,7 +9,7 @@ use crate::core::error::{PaserkError, PaserkResult};
 pub const ARGON2_SALT_SIZE: usize = 16;
 
 /// Nonce size for PBKW (24 bytes).
-/// This nonce is used as input to the KDF, and the XChaCha20 nonce (also 24 bytes)
+/// This nonce is used as input to the KDF, and the `XChaCha20` nonce (also 24 bytes)
 /// is derived from the KDF output.
 pub const XCHACHA20_NONCE_SIZE: usize = 24;
 
@@ -122,6 +122,10 @@ pub fn pbkw_wrap_local_k2k4(
     use chacha20::XChaCha20;
     use rand_core::{OsRng, TryRngCore};
 
+    // Type aliases for BLAKE2b variants
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Generate random salt and nonce
     let mut salt = [0u8; ARGON2_SALT_SIZE];
     let mut nonce = [0u8; XCHACHA20_NONCE_SIZE]; // 24 bytes for XChaCha20
@@ -149,7 +153,6 @@ pub fn pbkw_wrap_local_k2k4(
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
     // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
-    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
@@ -172,8 +175,7 @@ pub fn pbkw_wrap_local_k2k4(
 
     // Compute authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
-    let memlimit_bytes = (params.memory_kib as u64) * 1024;
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+    let memlimit_bytes = u64::from(params.memory_kib) * 1024;
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -197,7 +199,7 @@ pub fn pbkw_wrap_local_k2k4(
 /// # Arguments
 ///
 /// * `salt` - The 16-byte Argon2 salt
-/// * `nonce` - The 24-byte XChaCha20 nonce
+/// * `nonce` - The 24-byte `XChaCha20` nonce
 /// * `ciphertext` - The 32-byte encrypted key
 /// * `tag` - The 32-byte authentication tag
 /// * `password` - The password used for wrapping
@@ -224,6 +226,10 @@ pub fn pbkw_unwrap_local_k2k4(
     use chacha20::XChaCha20;
     use subtle::ConstantTimeEq;
 
+    // Type aliases for BLAKE2b variants
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Build Argon2id parameters
     let argon2_params = ParamsBuilder::new()
         .m_cost(params.memory_kib)
@@ -241,7 +247,6 @@ pub fn pbkw_unwrap_local_k2k4(
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
     // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
-    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
@@ -258,8 +263,7 @@ pub fn pbkw_unwrap_local_k2k4(
 
     // Verify authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
-    let memlimit_bytes = (params.memory_kib as u64) * 1024;
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+    let memlimit_bytes = u64::from(params.memory_kib) * 1024;
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -319,6 +323,10 @@ pub fn pbkw_wrap_secret_k2k4(
     use chacha20::XChaCha20;
     use rand_core::{OsRng, TryRngCore};
 
+    // Type aliases for BLAKE2b variants
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Generate random salt and nonce
     let mut salt = [0u8; ARGON2_SALT_SIZE];
     let mut nonce = [0u8; XCHACHA20_NONCE_SIZE]; // 24 bytes for XChaCha20
@@ -346,7 +354,6 @@ pub fn pbkw_wrap_secret_k2k4(
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
     // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
-    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
@@ -369,8 +376,7 @@ pub fn pbkw_wrap_secret_k2k4(
 
     // Compute authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
-    let memlimit_bytes = (params.memory_kib as u64) * 1024;
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+    let memlimit_bytes = u64::from(params.memory_kib) * 1024;
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -394,7 +400,7 @@ pub fn pbkw_wrap_secret_k2k4(
 /// # Arguments
 ///
 /// * `salt` - The 16-byte Argon2 salt
-/// * `nonce` - The 24-byte XChaCha20 nonce
+/// * `nonce` - The 24-byte `XChaCha20` nonce
 /// * `ciphertext` - The 64-byte encrypted key
 /// * `tag` - The 32-byte authentication tag
 /// * `password` - The password used for wrapping
@@ -421,6 +427,10 @@ pub fn pbkw_unwrap_secret_k2k4(
     use chacha20::XChaCha20;
     use subtle::ConstantTimeEq;
 
+    // Type aliases for BLAKE2b variants
+    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Build Argon2id parameters
     let argon2_params = ParamsBuilder::new()
         .m_cost(params.memory_kib)
@@ -438,7 +448,6 @@ pub fn pbkw_unwrap_secret_k2k4(
         .map_err(|_| PaserkError::KeyDerivationFailed)?;
 
     // Derive encryption key: Ek = crypto_generichash(0xFF || k) - UNKEYED BLAKE2b
-    type Blake2b32 = Blake2b<blake2::digest::consts::U32>;
     let mut ek_hasher = <Blake2b32 as Default>::default();
     <Blake2b32 as Update>::update(&mut ek_hasher, &[PBKW_ENCRYPTION_KEY_DOMAIN]);
     <Blake2b32 as Update>::update(&mut ek_hasher, &psk);
@@ -455,8 +464,7 @@ pub fn pbkw_unwrap_secret_k2k4(
 
     // Verify authentication tag:
     // t = crypto_generichash(msg=h || s || memlimit || opslimit || parallelism || n || edk, key=Ak, len=32)
-    let memlimit_bytes = (params.memory_kib as u64) * 1024;
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+    let memlimit_bytes = u64::from(params.memory_kib) * 1024;
     let mut tag_mac =
         <Blake2bMac32 as KeyInit>::new_from_slice(&auth_key).map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut tag_mac, header.as_bytes());
@@ -491,6 +499,7 @@ pub fn pbkw_unwrap_secret_k2k4(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

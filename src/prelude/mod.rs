@@ -71,6 +71,7 @@ pub use crate::core::types::{
     PaserkLocal, PaserkLocalId, PaserkLocalPw, PaserkLocalWrap, PaserkPublic, PaserkPublicId,
     PaserkSeal, PaserkSecret, PaserkSecretId, PaserkSecretPw, PaserkSecretWrap,
 };
+#[allow(deprecated)]
 pub use crate::core::version::{K1, K2, K3, K4, PaserkVersion};
 
 // Re-export PBKW parameters

@@ -1,4 +1,4 @@
-//! PaserkSeal - Symmetric key encrypted with public key.
+//! `PaserkSeal` - Symmetric key encrypted with public key.
 //!
 //! This module provides the `PaserkSeal` type for storing symmetric keys
 //! that have been encrypted with a recipient's public key using PKE.
@@ -10,7 +10,7 @@
 //! # Version Differences
 //!
 //! - K1: Uses RSA-4096 KEM + AES-256-CTR + HMAC-SHA384 (512-byte RSA ciphertext, 48-byte tag)
-//! - K2/K4: Uses X25519 (32-byte ephemeral key) + BLAKE2b (32-byte tag)
+//! - K2/K4: Uses X25519 (32-byte ephemeral key) + `BLAKE2b` (32-byte tag)
 //! - K3: Uses P-384 (49-byte compressed ephemeral key) + HMAC-SHA384 (48-byte tag)
 
 use core::fmt::{self, Debug, Display};
@@ -21,7 +21,7 @@ use base64::prelude::*;
 use crate::core::error::{PaserkError, PaserkResult};
 use crate::core::version::PaserkVersion;
 
-#[cfg(any(feature = "k1", feature = "k2", feature = "k3", feature = "k4"))]
+#[cfg(any(feature = "k1-insecure", feature = "k2", feature = "k3", feature = "k4"))]
 use crate::core::types::PaserkLocal;
 
 #[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
@@ -40,7 +40,7 @@ use crate::core::types::PaserkSecret;
 /// # Version Differences
 ///
 /// - K1: RSA-4096 KEM + AES-256-CTR + HMAC-SHA384 (512-byte RSA ciphertext, 48-byte tag)
-/// - K2/K4: X25519 ECDH + XChaCha20 + BLAKE2b (32-byte ephemeral, 32-byte tag)
+/// - K2/K4: X25519 ECDH + `XChaCha20` + `BLAKE2b` (32-byte ephemeral, 32-byte tag)
 /// - K3: P-384 ECDH + AES-256-CTR + HMAC-SHA384 (49-byte ephemeral, 48-byte tag)
 ///
 /// # Security
@@ -139,10 +139,9 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     /// Returns the expected ephemeral public key size (K2/K3/K4) or RSA ciphertext size (K1).
     fn expected_ephemeral_pk_size() -> usize {
         match V::VERSION {
-            1 => 512,    // RSA-4096 ciphertext
-            2 | 4 => 32, // X25519
-            3 => 49,     // P-384 compressed SEC1
-            _ => 32,
+            1 => 512, // RSA-4096 ciphertext
+            3 => 49,  // P-384 compressed SEC1
+            _ => 32,  // X25519 (K2, K4)
         }
     }
 
@@ -150,8 +149,7 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     fn expected_tag_size() -> usize {
         match V::VERSION {
             1 | 3 => 48, // HMAC-SHA384
-            2 | 4 => 32, // BLAKE2b
-            _ => 32,
+            _ => 32,     // BLAKE2b (K2, K4)
         }
     }
 
@@ -165,11 +163,16 @@ impl<V: PaserkVersion> PaserkSeal<V> {
 // Seal/Unseal operations for K1 (RSA-4096 KEM + AES-256-CTR + HMAC-SHA384)
 // =============================================================================
 
-#[cfg(feature = "k1")]
+#[cfg(feature = "k1-insecure")]
+#[allow(deprecated)]
 impl PaserkSeal<crate::core::version::K1> {
     /// Seals a symmetric key with a recipient's RSA-4096 public key.
     ///
     /// The public key must have a 4096-bit modulus and exponent 65537.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or the cryptographic operation fails.
     pub fn try_seal_with_rsa(
         key: &PaserkLocal<crate::core::version::K1>,
         recipient_pk: &rsa::RsaPublicKey,
@@ -186,6 +189,10 @@ impl PaserkSeal<crate::core::version::K1> {
     /// Unseals the encrypted key using the recipient's RSA-4096 secret key.
     ///
     /// The secret key must have a 4096-bit modulus.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or authentication fails.
     pub fn try_unseal_with_rsa(
         &self,
         recipient_sk: &rsa::RsaPrivateKey,
@@ -223,6 +230,10 @@ impl PaserkSeal<crate::core::version::K1> {
 #[cfg(feature = "k2")]
 impl PaserkSeal<crate::core::version::K2> {
     /// Seals a symmetric key with a recipient's public key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or the cryptographic operation fails.
     pub fn try_seal(
         key: &PaserkLocal<crate::core::version::K2>,
         recipient_secret: &PaserkSecret<crate::core::version::K2>,
@@ -255,6 +266,10 @@ impl PaserkSeal<crate::core::version::K2> {
     }
 
     /// Unseals the encrypted key using the recipient's secret key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or authentication fails.
     pub fn try_unseal(
         &self,
         recipient_secret: &PaserkSecret<crate::core::version::K2>,
@@ -296,6 +311,10 @@ impl PaserkSeal<crate::core::version::K2> {
 #[cfg(feature = "k4")]
 impl PaserkSeal<crate::core::version::K4> {
     /// Seals a symmetric key with a recipient's public key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or the cryptographic operation fails.
     pub fn try_seal(
         key: &PaserkLocal<crate::core::version::K4>,
         recipient_secret: &PaserkSecret<crate::core::version::K4>,
@@ -328,6 +347,10 @@ impl PaserkSeal<crate::core::version::K4> {
     }
 
     /// Unseals the encrypted key using the recipient's secret key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or authentication fails.
     pub fn try_unseal(
         &self,
         recipient_secret: &PaserkSecret<crate::core::version::K4>,
@@ -373,6 +396,10 @@ impl PaserkSeal<crate::core::version::K3> {
     /// This extracts the P-384 public key from the recipient's secret key
     /// and encrypts the symmetric key so only the secret key holder can
     /// decrypt it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or the cryptographic operation fails.
     pub fn try_seal(
         key: &PaserkLocal<crate::core::version::K3>,
         recipient_secret: &PaserkSecret<crate::core::version::K3>,
@@ -406,6 +433,10 @@ impl PaserkSeal<crate::core::version::K3> {
     }
 
     /// Unseals the encrypted key using the recipient's P-384 secret key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is invalid or authentication fails.
     pub fn try_unseal(
         &self,
         recipient_secret: &PaserkSecret<crate::core::version::K3>,
@@ -579,6 +610,7 @@ impl<V: PaserkVersion> PartialEq for PaserkSeal<V> {
 impl<V: PaserkVersion> Eq for PaserkSeal<V> {}
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::version::K4;
@@ -801,13 +833,13 @@ mod tests {
     // =========================================================================
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_header() {
         use crate::core::version::K1;
         assert_eq!(PaserkSeal::<K1>::header(), "k1.seal.");
     }
 
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn generate_k1_test_keypair() -> PaserkResult<(rsa::RsaPrivateKey, rsa::RsaPublicKey)> {
         use rsa::RsaPrivateKey;
 
@@ -820,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_seal_unseal_roundtrip() -> PaserkResult<()> {
         use crate::core::version::K1;
 
@@ -836,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_serialize_parse_roundtrip() -> PaserkResult<()> {
         use crate::core::version::K1;
 
@@ -859,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_unseal_wrong_key() -> PaserkResult<()> {
         use crate::core::version::K1;
 
@@ -876,7 +908,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_rsa_ciphertext_size() -> PaserkResult<()> {
         use crate::core::version::K1;
 
@@ -891,7 +923,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_tag_size() -> PaserkResult<()> {
         use crate::core::version::K1;
 
@@ -906,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_data_size() {
         use crate::core::version::K1;
         // K1: tag (48) + edk (32) + c (512) = 592 bytes

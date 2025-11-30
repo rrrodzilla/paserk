@@ -3,14 +3,17 @@
 //! These tests use the test vectors from the paseto-standard/test-vectors
 //! repository to verify compliance with the PASERK specification.
 
+// Test code legitimately uses panic patterns for test failure reporting
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+
 mod vectors;
 
-use std::path::Path;
+use std::path::PathBuf;
 use vectors::*;
 
 /// Get the path to the test vectors directory.
-fn vectors_dir() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/vectors").leak()
+fn vectors_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/vectors")
 }
 
 // =============================================================================
@@ -424,7 +427,7 @@ mod k4_tests {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
                             .map(|m| m / 1024)
-                            .unwrap_or(65536) as u32, // fallback
+                            .unwrap_or(65536), // fallback
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -506,7 +509,7 @@ mod k4_tests {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
                             .map(|m| m / 1024)
-                            .unwrap_or(65536) as u32, // fallback
+                            .unwrap_or(65536), // fallback
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -913,7 +916,7 @@ mod k2_tests {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
                             .map(|m| m / 1024)
-                            .unwrap_or(65536) as u32,
+                            .unwrap_or(65536),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };
@@ -970,7 +973,7 @@ mod k2_tests {
                         memory_kib: options
                             .and_then(|o| o.memlimit)
                             .map(|m| m / 1024)
-                            .unwrap_or(65536) as u32,
+                            .unwrap_or(65536),
                         iterations: options.and_then(|o| o.opslimit).unwrap_or(2),
                         parallelism: 1,
                     };

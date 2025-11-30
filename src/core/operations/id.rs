@@ -5,7 +5,7 @@
 //!
 //! The hash algorithm depends on the PASERK version:
 //! - K1/K3: SHA-384, truncated to 33 bytes (264 bits)
-//! - K2/K4: BLAKE2b with 33-byte (264-bit) output
+//! - K2/K4: `BLAKE2b` with 33-byte (264-bit) output
 
 use crate::core::version::PaserkVersion;
 
@@ -19,8 +19,8 @@ pub const ID_HASH_SIZE: usize = 33;
 ///
 /// # Algorithm Selection
 ///
-/// - K1/K3: SHA-384(header || paserk_string), truncated to 33 bytes
-/// - K2/K4: BLAKE2b(header || paserk_string, 33 bytes)
+/// - K1/K3: SHA-384(header || `paserk_string`), truncated to 33 bytes
+/// - K2/K4: `BLAKE2b`(header || `paserk_string`, 33 bytes)
 ///
 /// # Arguments
 ///
@@ -45,7 +45,7 @@ fn compute_id_for_version(version: u8, header: &str, paserk_string: &str) -> [u8
         #[cfg(any(feature = "k2", feature = "k4"))]
         2 | 4 => compute_id_blake2b(header, paserk_string),
 
-        #[cfg(any(feature = "k1", feature = "k3"))]
+        #[cfg(any(feature = "k1-insecure", feature = "k3"))]
         1 | 3 => compute_id_sha384(header, paserk_string),
 
         // This case handles versions that don't have their feature enabled
@@ -56,15 +56,14 @@ fn compute_id_for_version(version: u8, header: &str, paserk_string: &str) -> [u8
     }
 }
 
-/// Computes the ID using BLAKE2b (for K2/K4).
+/// Computes the ID using `BLAKE2b` (for K2/K4).
 #[cfg(any(feature = "k2", feature = "k4"))]
 fn compute_id_blake2b(header: &str, paserk_string: &str) -> [u8; ID_HASH_SIZE] {
     use blake2::digest::{Update, VariableOutput};
     use blake2::Blake2bVar;
 
-    let mut hasher = match Blake2bVar::new(ID_HASH_SIZE) {
-        Ok(h) => h,
-        Err(_) => return [0u8; ID_HASH_SIZE], // Should never happen with valid size
+    let Ok(mut hasher) = Blake2bVar::new(ID_HASH_SIZE) else {
+        return [0u8; ID_HASH_SIZE]; // Should never happen with valid size
     };
     hasher.update(header.as_bytes());
     hasher.update(paserk_string.as_bytes());
@@ -77,7 +76,7 @@ fn compute_id_blake2b(header: &str, paserk_string: &str) -> [u8; ID_HASH_SIZE] {
 }
 
 /// Computes the ID using SHA-384 (for K1/K3).
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 fn compute_id_sha384(header: &str, paserk_string: &str) -> [u8; ID_HASH_SIZE] {
     use sha2::{Digest, Sha384};
 

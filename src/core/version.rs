@@ -23,7 +23,7 @@ pub trait PaserkVersion: private::Sealed + Default + Clone + Copy + Send + Sync 
     const VERSION: u8;
 }
 
-/// Marker trait for versions using BLAKE2b for ID computation (K2, K4).
+/// Marker trait for versions using `BLAKE2b` for ID computation (K2, K4).
 pub trait UsesBlake2b: PaserkVersion {}
 
 /// Marker trait for versions using SHA-384 for ID computation (K1, K3).
@@ -42,9 +42,20 @@ pub trait UsesX25519: PaserkVersion {}
 pub trait UsesP384: PaserkVersion {}
 
 /// Marker trait for versions using RSA-KEM for PKE (K1).
+///
+/// # Security Warning
+///
+/// **The `rsa` crate is vulnerable to [RUSTSEC-2023-0071] (Marvin Attack).**
+/// Use [`K4`] with [`UsesX25519`] instead.
+///
+/// [RUSTSEC-2023-0071]: https://rustsec.org/advisories/RUSTSEC-2023-0071
+#[deprecated(
+    since = "0.1.0",
+    note = "RSA is vulnerable to RUSTSEC-2023-0071 (Marvin Attack). Use K4 with X25519 instead."
+)]
 pub trait UsesRsa: PaserkVersion {}
 
-/// Marker trait for versions using XChaCha20 for encryption (K2, K4).
+/// Marker trait for versions using `XChaCha20` for encryption (K2, K4).
 pub trait UsesXChaCha20: PaserkVersion {}
 
 /// Marker trait for versions using AES-CTR for encryption (K1, K3).
@@ -61,21 +72,41 @@ pub trait UsesAesCtr: PaserkVersion {}
 /// - PBKDF2-SHA384 for password-based key wrapping
 /// - RSA-KEM for public key encryption
 /// - AES-256-CTR + HMAC-SHA384 for symmetric operations
+///
+/// # Security Warning
+///
+/// **K1 uses the `rsa` crate which is vulnerable to [RUSTSEC-2023-0071] (Marvin Attack),
+/// a timing side-channel attack that could enable private key recovery.**
+///
+/// Use [`K4`] for new projects. K1 is provided only for legacy PASETO V1 interoperability.
+///
+/// [RUSTSEC-2023-0071]: https://rustsec.org/advisories/RUSTSEC-2023-0071
+#[deprecated(
+    since = "0.1.0",
+    note = "K1 uses RSA which is vulnerable to RUSTSEC-2023-0071 (Marvin Attack). Use K4 instead."
+)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct K1;
 
+#[allow(deprecated)]
 impl private::Sealed for K1 {}
 
+#[allow(deprecated)]
 impl PaserkVersion for K1 {
     const PREFIX: &'static str = "k1";
     const VERSION: u8 = 1;
 }
 
+#[allow(deprecated)]
 impl UsesSha384 for K1 {}
+#[allow(deprecated)]
 impl UsesPbkdf2 for K1 {}
+#[allow(deprecated)]
 impl UsesRsa for K1 {}
+#[allow(deprecated)]
 impl UsesAesCtr for K1 {}
 
+#[allow(deprecated)]
 impl Display for K1 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", Self::PREFIX)
@@ -92,7 +123,7 @@ impl Display for K1 {
 /// - BLAKE2b-264 for ID computation
 /// - Argon2id for password-based key wrapping
 /// - X25519 for public key encryption
-/// - XChaCha20 + BLAKE2b for symmetric operations
+/// - `XChaCha20` + `BLAKE2b` for symmetric operations
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct K2;
 
@@ -158,7 +189,7 @@ impl Display for K3 {
 /// - BLAKE2b-264 for ID computation
 /// - Argon2id for password-based key wrapping
 /// - X25519 for public key encryption
-/// - XChaCha20 + BLAKE2b for symmetric operations
+/// - `XChaCha20` + `BLAKE2b` for symmetric operations
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct K4;
 
@@ -181,6 +212,7 @@ impl Display for K4 {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

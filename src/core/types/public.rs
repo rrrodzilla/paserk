@@ -1,4 +1,4 @@
-//! PaserkPublic - Public key serialization.
+//! `PaserkPublic` - Public key serialization.
 //!
 //! This module provides the `PaserkPublic` type for serializing public
 //! (verification) keys in PASERK format.

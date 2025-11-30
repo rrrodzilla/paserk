@@ -1,4 +1,4 @@
-//! PaserkLocalPw - Symmetric key wrapped with a password.
+//! `PaserkLocalPw` - Symmetric key wrapped with a password.
 //!
 //! This module provides the `PaserkLocalPw` type for storing symmetric keys
 //! that have been encrypted with a password using PBKW.
@@ -19,7 +19,7 @@ use crate::core::operations::pbkw::{
     Argon2Params, ARGON2_SALT_SIZE, PBKW_TAG_SIZE, XCHACHA20_NONCE_SIZE,
 };
 
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 use crate::core::operations::pbkw::{
     Pbkdf2Params, AES_CTR_NONCE_SIZE, PBKDF2_SALT_SIZE, PBKW_K1K3_TAG_SIZE,
 };
@@ -117,7 +117,7 @@ impl<V: PaserkVersion> PaserkLocalPw<V> {
         }
     }
 
-    /// Returns (salt_size, params_size, nonce_size) based on version.
+    /// Returns (`salt_size`, `params_size`, `nonce_size`) based on version.
     #[must_use]
     fn sizes_for_version() -> (usize, usize, usize) {
         match V::VERSION {
@@ -163,7 +163,7 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkLocalPw<V> {
 
         // Concatenate: salt || memlimit_BE64 || opslimit_BE32 || parallelism_BE32 || nonce || ciphertext || tag
         // Convert params.memory_kib to bytes for memlimit
-        let memlimit_bytes = (params.memory_kib as u64) * 1024;
+        let memlimit_bytes = u64::from(params.memory_kib) * 1024;
         let mut data = Vec::with_capacity(ARGON2_SALT_SIZE + 8 + 4 + 4 + XCHACHA20_NONCE_SIZE + 32 + PBKW_TAG_SIZE);
         data.extend_from_slice(&salt);
         data.extend_from_slice(&memlimit_bytes.to_be_bytes());
@@ -214,7 +214,7 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkLocalPw<V> {
         offset += 4;
 
         // Convert memlimit from bytes to KiB
-        let memory_kib = (memlimit_bytes / 1024) as u32;
+        let memory_kib = u32::try_from(memlimit_bytes / 1024).map_err(|_| PaserkError::InvalidKey)?;
         let params = Argon2Params {
             memory_kib,
             iterations: opslimit,
@@ -245,7 +245,7 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkLocalPw<V> {
 // PBKW wrapping for K1/K3 (PBKDF2-SHA384 + AES-256-CTR + HMAC-SHA384)
 // =============================================================================
 
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 impl<V: PaserkVersion + crate::core::version::UsesPbkdf2> PaserkLocalPw<V> {
     /// Wraps a symmetric key with a password using PBKW (K1/K3: PBKDF2).
     ///
@@ -271,7 +271,7 @@ impl<V: PaserkVersion + crate::core::version::UsesPbkdf2> PaserkLocalPw<V> {
 
         let header = Self::header();
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_local_k1k3(key.as_bytes(), password, &params, &header)?;
+            pbkw_wrap_local_k1k3(key.as_bytes(), password, params, &header)?;
 
         // Concatenate: salt || iterations_BE32 || nonce || ciphertext || tag
         let mut data = Vec::with_capacity(PBKDF2_SALT_SIZE + 4 + AES_CTR_NONCE_SIZE + 32 + PBKW_K1K3_TAG_SIZE);
@@ -330,7 +330,7 @@ impl<V: PaserkVersion + crate::core::version::UsesPbkdf2> PaserkLocalPw<V> {
             &ciphertext,
             &tag,
             password,
-            &params,
+            params,
             &header,
         )?;
 
@@ -446,7 +446,7 @@ mod tests {
         }
     }
 
-    #[cfg(any(feature = "k1", feature = "k3"))]
+    #[cfg(any(feature = "k1-insecure", feature = "k3"))]
     fn test_pbkdf2_params() -> Pbkdf2Params {
         Pbkdf2Params { iterations: 1000 }
     }

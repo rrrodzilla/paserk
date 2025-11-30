@@ -1,4 +1,4 @@
-//! PaserkSecretId - Secret key identifier.
+//! `PaserkSecretId` - Secret key identifier.
 //!
 //! This module provides the `PaserkSecretId` type for key identifiers
 //! computed from secret keys.

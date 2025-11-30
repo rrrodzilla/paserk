@@ -25,7 +25,10 @@ features = ["k4", "prelude"]
 default = ["k4", "prelude"]
 
 # Version features - each enables the cryptographic primitives needed
-k1 = ["sha2", "hmac", "aes", "ctr", "pbkdf2", "rsa"]
+#
+# SECURITY WARNING: k1-insecure uses the `rsa` crate which is vulnerable to
+# RUSTSEC-2023-0071 (Marvin Attack timing side-channel). Use K4 for new projects.
+k1-insecure = ["sha2", "hmac", "aes", "ctr", "pbkdf2", "rsa"]
 k2 = ["blake2", "chacha20", "argon2", "x25519-dalek", "ed25519-dalek"]
 k3 = ["sha2", "hmac", "aes", "ctr", "pbkdf2", "p384"]
 k4 = ["blake2", "chacha20", "argon2", "x25519-dalek", "ed25519-dalek"]
@@ -34,7 +37,7 @@ k4 = ["blake2", "chacha20", "argon2", "x25519-dalek", "ed25519-dalek"]
 prelude = []
 
 # For testing all versions
-all-versions = ["k1", "k2", "k3", "k4"]
+all-versions = ["k1-insecure", "k2", "k3", "k4"]
 
 # Internal feature dependencies
 sha2 = ["dep:sha2"]

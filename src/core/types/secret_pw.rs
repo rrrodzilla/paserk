@@ -1,4 +1,4 @@
-//! PaserkSecretPw - Secret key wrapped with a password.
+//! `PaserkSecretPw` - Secret key wrapped with a password.
 //!
 //! This module provides the `PaserkSecretPw` type for storing secret (signing) keys
 //! that have been encrypted with a password using PBKW.
@@ -19,7 +19,7 @@ use crate::core::operations::pbkw::{
     Argon2Params, ARGON2_SALT_SIZE, PBKW_TAG_SIZE, XCHACHA20_NONCE_SIZE,
 };
 
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 use crate::core::operations::pbkw::{
     AES_CTR_NONCE_SIZE, PBKDF2_SALT_SIZE, PBKW_K1K3_TAG_SIZE, Pbkdf2Params,
 };
@@ -121,7 +121,7 @@ impl<V: PaserkVersion> PaserkSecretPw<V> {
         }
     }
 
-    /// Returns (salt_size, params_size, nonce_size) based on version.
+    /// Returns (`salt_size`, `params_size`, `nonce_size`) based on version.
     #[must_use]
     fn sizes_for_version() -> (usize, usize, usize) {
         match V::VERSION {
@@ -138,8 +138,7 @@ impl<V: PaserkVersion> PaserkSecretPw<V> {
         match V::VERSION {
             2 | 4 => 64, // Ed25519 secret key
             3 => 48,     // P-384 secret key
-            1 => 0,      // RSA (variable, not supported yet)
-            _ => 0,
+            _ => 0,      // RSA (variable, not supported yet)
         }
     }
 }
@@ -185,7 +184,7 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkSecretPw<V> {
             pbkw_wrap_secret_k2k4(&plaintext, password, &params, &header)?;
 
         // Concatenate: salt || memlimit_BE64 || opslimit_BE32 || parallelism_BE32 || nonce || ciphertext || tag
-        let memlimit_bytes = (params.memory_kib as u64) * 1024;
+        let memlimit_bytes = u64::from(params.memory_kib) * 1024;
         let mut data = Vec::with_capacity(ARGON2_SALT_SIZE + 8 + 4 + 4 + XCHACHA20_NONCE_SIZE + 64 + PBKW_TAG_SIZE);
         data.extend_from_slice(&salt);
         data.extend_from_slice(&memlimit_bytes.to_be_bytes());
@@ -240,7 +239,7 @@ impl<V: PaserkVersion + crate::core::version::UsesArgon2> PaserkSecretPw<V> {
         offset += 4;
 
         // Convert memlimit from bytes to KiB
-        let memory_kib = (memlimit_bytes / 1024) as u32;
+        let memory_kib = u32::try_from(memlimit_bytes / 1024).map_err(|_| PaserkError::InvalidKey)?;
         let params = Argon2Params {
             memory_kib,
             iterations: opslimit,
@@ -305,7 +304,7 @@ impl PaserkSecretPw<crate::core::version::K3> {
 
         let header = Self::header();
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_secret_k3(&plaintext, password, &params, &header)?;
+            pbkw_wrap_secret_k3(&plaintext, password, params, &header)?;
 
         // Concatenate: salt || iterations_BE32 || nonce || ciphertext || tag
         let mut data = Vec::with_capacity(PBKDF2_SALT_SIZE + 4 + AES_CTR_NONCE_SIZE + 48 + PBKW_K1K3_TAG_SIZE);
@@ -368,7 +367,7 @@ impl PaserkSecretPw<crate::core::version::K3> {
             &ciphertext,
             &tag,
             password,
-            &params,
+            params,
             &header,
         )?;
 

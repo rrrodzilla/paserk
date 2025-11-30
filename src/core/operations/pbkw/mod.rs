@@ -57,7 +57,7 @@
 #[cfg(any(feature = "k2", feature = "k4"))]
 mod argon2_impl;
 
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 mod pbkdf2_impl;
 
 #[cfg(any(feature = "k2", feature = "k4"))]
@@ -68,12 +68,12 @@ pub(crate) use argon2_impl::{
     pbkw_unwrap_local_k2k4, pbkw_unwrap_secret_k2k4, pbkw_wrap_local_k2k4, pbkw_wrap_secret_k2k4,
 };
 
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub use pbkdf2_impl::{
     Pbkdf2Params, AES_CTR_NONCE_SIZE, PBKDF2_SALT_SIZE, PBKW_K1K3_TAG_SIZE,
 };
 
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub(crate) use pbkdf2_impl::{pbkw_unwrap_local_k1k3, pbkw_wrap_local_k1k3};
 
 #[cfg(feature = "k3")]

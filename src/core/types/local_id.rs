@@ -1,4 +1,4 @@
-//! PaserkLocalId - Symmetric key identifier.
+//! `PaserkLocalId` - Symmetric key identifier.
 //!
 //! This module provides the `PaserkLocalId` type for key identifiers
 //! computed from symmetric (local) keys.

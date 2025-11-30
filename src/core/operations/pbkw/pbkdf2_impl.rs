@@ -80,7 +80,7 @@ impl Pbkdf2Params {
 }
 
 /// Derives encryption and authentication keys using PBKDF2-SHA384 and HMAC-SHA384.
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 fn derive_keys_k1k3(
     password: &[u8],
     salt: &[u8; PBKDF2_SALT_SIZE],
@@ -118,7 +118,7 @@ fn derive_keys_k1k3(
 }
 
 /// Encrypts data using AES-256-CTR.
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 fn aes_ctr_encrypt(key: &[u8; 32], nonce: &[u8; AES_CTR_NONCE_SIZE], data: &mut [u8]) {
     use aes::cipher::{KeyIvInit, StreamCipher};
     use ctr::Ctr128BE;
@@ -129,7 +129,7 @@ fn aes_ctr_encrypt(key: &[u8; 32], nonce: &[u8; AES_CTR_NONCE_SIZE], data: &mut 
 }
 
 /// Computes HMAC-SHA384 tag.
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 fn compute_tag_k1k3(
     auth_key: &[u8; 48],
     header: &str,
@@ -161,11 +161,11 @@ fn compute_tag_k1k3(
 /// # Returns
 ///
 /// A tuple of (salt, nonce, ciphertext, tag).
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub fn pbkw_wrap_local_k1k3(
     plaintext_key: &[u8; 32],
     password: &[u8],
-    params: &Pbkdf2Params,
+    params: Pbkdf2Params,
     header: &str,
 ) -> PaserkResult<PbkwLocalOutputK1K3> {
     use rand_core::{OsRng, TryRngCore};
@@ -213,14 +213,14 @@ pub fn pbkw_wrap_local_k1k3(
 /// # Returns
 ///
 /// The unwrapped 32-byte plaintext key.
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub fn pbkw_unwrap_local_k1k3(
     salt: &[u8; PBKDF2_SALT_SIZE],
     nonce: &[u8; AES_CTR_NONCE_SIZE],
     ciphertext: &[u8; 32],
     tag: &[u8; PBKW_K1K3_TAG_SIZE],
     password: &[u8],
-    params: &Pbkdf2Params,
+    params: Pbkdf2Params,
     header: &str,
 ) -> PaserkResult<[u8; 32]> {
     use subtle::ConstantTimeEq;
@@ -256,7 +256,7 @@ pub fn pbkw_unwrap_local_k1k3(
 pub fn pbkw_wrap_secret_k3(
     plaintext_key: &[u8; 48],
     password: &[u8],
-    params: &Pbkdf2Params,
+    params: Pbkdf2Params,
     header: &str,
 ) -> PaserkResult<PbkwSecretOutputK3> {
     use rand_core::{OsRng, TryRngCore};
@@ -299,7 +299,7 @@ pub fn pbkw_unwrap_secret_k3(
     ciphertext: &[u8; 48],
     tag: &[u8; PBKW_K1K3_TAG_SIZE],
     password: &[u8],
-    params: &Pbkdf2Params,
+    params: Pbkdf2Params,
     header: &str,
 ) -> PaserkResult<[u8; 48]> {
     use subtle::ConstantTimeEq;
@@ -333,6 +333,7 @@ pub fn pbkw_unwrap_secret_k3(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -350,19 +351,19 @@ mod tests {
         let header = "k3.local-pw.";
 
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_local_k1k3(&plaintext_key, password, &params, header)?;
+            pbkw_wrap_local_k1k3(&plaintext_key, password, params, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
         let unwrapped =
-            pbkw_unwrap_local_k1k3(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
+            pbkw_unwrap_local_k1k3(&salt, &nonce, &ciphertext, &tag, password, params, header)?;
 
         assert_eq!(unwrapped, plaintext_key);
         Ok(())
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_pbkw_wrap_unwrap_local_k1_roundtrip() -> PaserkResult<()> {
         let plaintext_key = [0x13u8; 32];
         let password = b"hunter2";
@@ -370,12 +371,12 @@ mod tests {
         let header = "k1.local-pw.";
 
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_local_k1k3(&plaintext_key, password, &params, header)?;
+            pbkw_wrap_local_k1k3(&plaintext_key, password, params, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
         let unwrapped =
-            pbkw_unwrap_local_k1k3(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
+            pbkw_unwrap_local_k1k3(&salt, &nonce, &ciphertext, &tag, password, params, header)?;
 
         assert_eq!(unwrapped, plaintext_key);
         Ok(())
@@ -390,12 +391,12 @@ mod tests {
         let header = "k3.secret-pw.";
 
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_secret_k3(&plaintext_key, password, &params, header)?;
+            pbkw_wrap_secret_k3(&plaintext_key, password, params, header)?;
 
         assert_ne!(ciphertext, plaintext_key);
 
         let unwrapped =
-            pbkw_unwrap_secret_k3(&salt, &nonce, &ciphertext, &tag, password, &params, header)?;
+            pbkw_unwrap_secret_k3(&salt, &nonce, &ciphertext, &tag, password, params, header)?;
 
         assert_eq!(unwrapped, plaintext_key);
         Ok(())
@@ -411,7 +412,7 @@ mod tests {
         let header = "k3.local-pw.";
 
         let (salt, nonce, ciphertext, tag) =
-            pbkw_wrap_local_k1k3(&plaintext_key, password, &params, header)?;
+            pbkw_wrap_local_k1k3(&plaintext_key, password, params, header)?;
 
         let result = pbkw_unwrap_local_k1k3(
             &salt,
@@ -419,7 +420,7 @@ mod tests {
             &ciphertext,
             &tag,
             wrong_password,
-            &params,
+            params,
             header,
         );
 
@@ -436,12 +437,12 @@ mod tests {
         let header = "k3.local-pw.";
 
         let (salt, nonce, ciphertext, mut tag) =
-            pbkw_wrap_local_k1k3(&plaintext_key, password, &params, header)?;
+            pbkw_wrap_local_k1k3(&plaintext_key, password, params, header)?;
 
         tag[0] ^= 0xff;
 
         let result =
-            pbkw_unwrap_local_k1k3(&salt, &nonce, &ciphertext, &tag, password, &params, header);
+            pbkw_unwrap_local_k1k3(&salt, &nonce, &ciphertext, &tag, password, params, header);
 
         assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
         Ok(())

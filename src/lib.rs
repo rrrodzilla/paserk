@@ -49,10 +49,23 @@
 //!
 //! | Version | Algorithms | Status |
 //! |---------|------------|--------|
-//! | **K1** | RSA + AES-CTR + HMAC-SHA384 | ✅ Fully implemented |
-//! | **K2** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented |
+//! | **K1** | RSA + AES-CTR + HMAC-SHA384 | ⚠️ **Deprecated** (see warning below) |
+//! | **K2** | Ed25519 + `XChaCha20` + `BLAKE2b` | ✅ Fully implemented |
 //! | **K3** | P-384 + AES-CTR + HMAC-SHA384 | ✅ Fully implemented |
-//! | **K4** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented (Recommended) |
+//! | **K4** | Ed25519 + `XChaCha20` + `BLAKE2b` | ✅ Fully implemented (Recommended) |
+//!
+//! # ⚠️ Security Warning: K1 (RSA) Vulnerability
+//!
+//! **The `k1-insecure` feature uses the `rsa` crate which is vulnerable to
+//! [RUSTSEC-2023-0071] (Marvin Attack), a timing side-channel attack that
+//! could enable private key recovery.**
+//!
+//! - **Do not use K1 for new projects.** Use [`K4`] instead.
+//! - K1 support is provided only for legacy PASETO V1 interoperability.
+//! - The feature has been renamed from `k1` to `k1-insecure` to require explicit opt-in.
+//! - K1 types will emit deprecation warnings when used.
+//!
+//! [RUSTSEC-2023-0071]: https://rustsec.org/advisories/RUSTSEC-2023-0071
 //!
 //! # Features
 //!
@@ -63,6 +76,7 @@
 //! paserk = { version = "0.1", features = ["k4"] }  # K4 only (default, recommended)
 //! paserk = { version = "0.1", features = ["k2", "k4"] }  # K2 and K4
 //! paserk = { version = "0.1", features = ["all-versions"] }  # All versions
+//! # paserk = { version = "0.1", features = ["k1-insecure"] }  # K1 (⚠️ see security warning)
 //! ```
 //!
 //! # Cryptographic Operations
@@ -72,21 +86,21 @@
 //! | Version | Encryption | Authentication |
 //! |---------|------------|----------------|
 //! | K1/K3 | AES-256-CTR | HMAC-SHA384 (48-byte tag) |
-//! | K2/K4 | XChaCha20 | BLAKE2b (32-byte tag) |
+//! | K2/K4 | `XChaCha20` | `BLAKE2b` (32-byte tag) |
 //!
 //! ## Password-Based Key Wrapping (PBKW)
 //!
 //! | Version | KDF | Encryption | Authentication |
 //! |---------|-----|------------|----------------|
 //! | K1/K3 | PBKDF2-SHA384 | AES-256-CTR | HMAC-SHA384 |
-//! | K2/K4 | Argon2id | XChaCha20 | BLAKE2b |
+//! | K2/K4 | Argon2id | `XChaCha20` | `BLAKE2b` |
 //!
 //! ## Public Key Encryption (Seal)
 //!
 //! | Version | Key Exchange | Encryption | Authentication |
 //! |---------|--------------|------------|----------------|
 //! | K1 | RSA-4096 KEM | AES-256-CTR | HMAC-SHA384 |
-//! | K2/K4 | X25519 ECDH | XChaCha20 | BLAKE2b |
+//! | K2/K4 | X25519 ECDH | `XChaCha20` | `BLAKE2b` |
 //! | K3 | P-384 ECDH | AES-256-CTR | HMAC-SHA384 |
 //!
 //! # Security
@@ -135,6 +149,7 @@ pub mod prelude;
 
 // Re-export commonly used items at crate root
 pub use core::error::{PaserkError, PaserkResult};
+#[allow(deprecated)]
 pub use core::version::{K1, K2, K3, K4, PaserkVersion};
 
 // Re-export types based on enabled version features
@@ -152,7 +167,7 @@ pub use core::operations::wrap::{Pie, WrapProtocol};
 pub use core::operations::pbkw::Argon2Params;
 
 // Version-specific type aliases for when only one version is enabled
-#[cfg(all(feature = "k4", not(any(feature = "k1", feature = "k2", feature = "k3"))))]
+#[cfg(all(feature = "k4", not(any(feature = "k1-insecure", feature = "k2", feature = "k3"))))]
 pub mod types {
     //! Convenient type aliases for K4 (default version).
 

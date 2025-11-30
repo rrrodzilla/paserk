@@ -1,4 +1,4 @@
-//! PaserkLocalWrap - Symmetric key wrapped with another symmetric key.
+//! `PaserkLocalWrap` - Symmetric key wrapped with another symmetric key.
 //!
 //! This module provides the `PaserkLocalWrap` type for storing symmetric keys
 //! that have been encrypted with another symmetric key using a wrap protocol.
@@ -33,7 +33,7 @@ const PIE_WRAP_NONCE_SIZE: usize = PIE_NONCE_SIZE;
 ///
 /// # Version Differences
 ///
-/// - K2/K4: Uses XChaCha20 + BLAKE2b with 32-byte tags
+/// - K2/K4: Uses `XChaCha20` + `BLAKE2b` with 32-byte tags
 /// - K1/K3: Uses AES-256-CTR + HMAC-SHA384 with 48-byte tags
 ///
 /// # Example
@@ -117,9 +117,8 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
     /// Returns the expected tag size for this version.
     fn expected_tag_size() -> usize {
         match V::VERSION {
-            2 | 4 => PIE_TAG_SIZE, // 32 bytes - BLAKE2b
             1 | 3 => 48,           // 48 bytes - HMAC-SHA384
-            _ => PIE_TAG_SIZE,
+            _ => PIE_TAG_SIZE,     // 32 bytes - BLAKE2b (K2, K4)
         }
     }
 }
@@ -131,6 +130,10 @@ impl<V: PaserkVersion, P: WrapProtocol> PaserkLocalWrap<V, P> {
 #[cfg(feature = "k2")]
 impl PaserkLocalWrap<crate::core::version::K2, Pie> {
     /// Wraps a symmetric key using the PIE protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cryptographic operation fails.
     pub fn try_wrap(
         key_to_wrap: &PaserkLocal<crate::core::version::K2>,
         wrapping_key: &PaserkLocal<crate::core::version::K2>,
@@ -145,6 +148,10 @@ impl PaserkLocalWrap<crate::core::version::K2, Pie> {
     }
 
     /// Unwraps the encrypted key using the PIE protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tag size is invalid or authentication fails.
     pub fn try_unwrap(
         &self,
         wrapping_key: &PaserkLocal<crate::core::version::K2>,
@@ -177,6 +184,10 @@ impl PaserkLocalWrap<crate::core::version::K2, Pie> {
 #[cfg(feature = "k4")]
 impl PaserkLocalWrap<crate::core::version::K4, Pie> {
     /// Wraps a symmetric key using the PIE protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cryptographic operation fails.
     pub fn try_wrap(
         key_to_wrap: &PaserkLocal<crate::core::version::K4>,
         wrapping_key: &PaserkLocal<crate::core::version::K4>,
@@ -191,6 +202,10 @@ impl PaserkLocalWrap<crate::core::version::K4, Pie> {
     }
 
     /// Unwraps the encrypted key using the PIE protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tag size is invalid or authentication fails.
     pub fn try_unwrap(
         &self,
         wrapping_key: &PaserkLocal<crate::core::version::K4>,
@@ -220,9 +235,14 @@ impl PaserkLocalWrap<crate::core::version::K4, Pie> {
 // PIE wrapping for K1 (AES-256-CTR + HMAC-SHA384, 48-byte tag)
 // =============================================================================
 
-#[cfg(feature = "k1")]
+#[cfg(feature = "k1-insecure")]
+#[allow(deprecated)]
 impl PaserkLocalWrap<crate::core::version::K1, Pie> {
     /// Wraps a symmetric key using the PIE protocol for K1.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cryptographic operation fails.
     pub fn try_wrap(
         key_to_wrap: &PaserkLocal<crate::core::version::K1>,
         wrapping_key: &PaserkLocal<crate::core::version::K1>,
@@ -237,6 +257,10 @@ impl PaserkLocalWrap<crate::core::version::K1, Pie> {
     }
 
     /// Unwraps the encrypted key using the PIE protocol for K1.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tag size is invalid or authentication fails.
     pub fn try_unwrap(
         &self,
         wrapping_key: &PaserkLocal<crate::core::version::K1>,
@@ -269,6 +293,10 @@ impl PaserkLocalWrap<crate::core::version::K1, Pie> {
 #[cfg(feature = "k3")]
 impl PaserkLocalWrap<crate::core::version::K3, Pie> {
     /// Wraps a symmetric key using the PIE protocol for K3.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cryptographic operation fails.
     pub fn try_wrap(
         key_to_wrap: &PaserkLocal<crate::core::version::K3>,
         wrapping_key: &PaserkLocal<crate::core::version::K3>,
@@ -283,6 +311,10 @@ impl PaserkLocalWrap<crate::core::version::K3, Pie> {
     }
 
     /// Unwraps the encrypted key using the PIE protocol for K3.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tag size is invalid or authentication fails.
     pub fn try_unwrap(
         &self,
         wrapping_key: &PaserkLocal<crate::core::version::K3>,
@@ -426,6 +458,7 @@ impl<V: PaserkVersion, P: WrapProtocol> PartialEq for PaserkLocalWrap<V, P> {
 impl<V: PaserkVersion, P: WrapProtocol> Eq for PaserkLocalWrap<V, P> {}
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::version::K4;
@@ -574,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_k1_wrap_unwrap_roundtrip() -> PaserkResult<()> {
         use crate::core::version::K1;
 

@@ -5,6 +5,8 @@
 
 // Many fields are required for deserialization but not directly used in tests
 #![allow(dead_code)]
+// Test code legitimately uses panic patterns for test failure reporting
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use serde::Deserialize;
 

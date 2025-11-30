@@ -1,4 +1,4 @@
-//! PaserkPublicId - Public key identifier.
+//! `PaserkPublicId` - Public key identifier.
 //!
 //! This module provides the `PaserkPublicId` type for key identifiers
 //! computed from public keys.

@@ -16,4 +16,5 @@ pub mod version;
 
 // Re-export commonly used items
 pub use error::{PaserkError, PaserkResult};
+#[allow(deprecated)]
 pub use version::{K1, K2, K3, K4, PaserkVersion};

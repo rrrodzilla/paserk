@@ -13,7 +13,7 @@ use crate::core::error::PaserkError;
 ///
 /// # Returns
 ///
-/// A tuple of (version_prefix, type_name, data) if successful.
+/// A tuple of (`version_prefix`, `type_name`, data) if successful.
 ///
 /// # Errors
 ///

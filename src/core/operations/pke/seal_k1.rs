@@ -20,7 +20,7 @@ pub const K1_SEAL_TAG_SIZE: usize = 48;
 /// Total size of sealed data: tag || edk || c (per PASERK spec order).
 pub const K1_SEAL_DATA_SIZE: usize = K1_SEAL_TAG_SIZE + K1_SEAL_CIPHERTEXT_SIZE + K1_RSA_CIPHERTEXT_SIZE;
 
-/// Output type for seal operation: (tag, encrypted_data_key, rsa_ciphertext).
+/// Output type for seal operation: (tag, `encrypted_data_key`, `rsa_ciphertext`).
 pub(crate) type K1SealOutput = (
     [u8; K1_SEAL_TAG_SIZE],
     [u8; K1_SEAL_CIPHERTEXT_SIZE],
@@ -47,8 +47,8 @@ const AK_DOMAIN_BYTE: u8 = 0x02;
 ///
 /// # Returns
 ///
-/// A tuple of (tag, encrypted_data_key, rsa_ciphertext).
-#[cfg(feature = "k1")]
+/// A tuple of (tag, `encrypted_data_key`, `rsa_ciphertext`).
+#[cfg(feature = "k1-insecure")]
 pub fn seal_k1(
     plaintext_key: &[u8; 32],
     recipient_pk: &rsa::RsaPublicKey,
@@ -61,6 +61,10 @@ pub fn seal_k1(
     use rsa::traits::PublicKeyParts;
     use rsa::BigUint;
     use sha2::{Digest, Sha384};
+
+    // Type aliases for cipher types
+    type HmacSha384 = Hmac<Sha384>;
+    type Aes256Ctr = Ctr64BE<aes::Aes256>;
 
     // Verify the public key has a 4096-bit modulus
     let n = recipient_pk.n();
@@ -92,8 +96,6 @@ pub fn seal_k1(
     let c_hash = Sha384::digest(c);
 
     // Derive encryption key and counter: HMAC-SHA384(msg = 0x01 || h || r, key = SHA384(c))
-    type HmacSha384 = Hmac<Sha384>;
-
     let mut ek_mac = <HmacSha384 as Mac>::new_from_slice(&c_hash)
         .map_err(|_| PaserkError::CryptoError)?;
     ek_mac.update(&[EK_DOMAIN_BYTE]);
@@ -118,7 +120,6 @@ pub fn seal_k1(
     auth_key.copy_from_slice(&ak_result[..48]);
 
     // Encrypt the plaintext key with AES-256-CTR
-    type Aes256Ctr = Ctr64BE<aes::Aes256>;
     let mut edk = *plaintext_key;
     let mut cipher = Aes256Ctr::new(&encryption_key.into(), &counter.into());
     cipher.apply_keystream(&mut edk);
@@ -154,7 +155,7 @@ pub fn seal_k1(
 /// # Returns
 ///
 /// The unsealed 32-byte symmetric key.
-#[cfg(feature = "k1")]
+#[cfg(feature = "k1-insecure")]
 pub fn unseal_k1(
     tag: &[u8; K1_SEAL_TAG_SIZE],
     edk: &[u8; K1_SEAL_CIPHERTEXT_SIZE],
@@ -169,6 +170,10 @@ pub fn unseal_k1(
     use rsa::BigUint;
     use sha2::{Digest, Sha384};
     use subtle::ConstantTimeEq;
+
+    // Type aliases for cipher types
+    type HmacSha384 = Hmac<Sha384>;
+    type Aes256Ctr = Ctr64BE<aes::Aes256>;
 
     // Verify the secret key has a 4096-bit modulus
     let n = recipient_sk.n();
@@ -191,8 +196,6 @@ pub fn unseal_k1(
     let c_hash = Sha384::digest(c);
 
     // Derive authentication key: HMAC-SHA384(msg = 0x02 || h || r, key = SHA384(c))
-    type HmacSha384 = Hmac<Sha384>;
-
     let mut ak_mac = <HmacSha384 as Mac>::new_from_slice(&c_hash)
         .map_err(|_| PaserkError::CryptoError)?;
     ak_mac.update(&[AK_DOMAIN_BYTE]);
@@ -234,7 +237,6 @@ pub fn unseal_k1(
     counter.copy_from_slice(&ek_result[32..48]);
 
     // Decrypt the encrypted data key with AES-256-CTR
-    type Aes256Ctr = Ctr64BE<aes::Aes256>;
     let mut plaintext = *edk;
     let mut cipher = Aes256Ctr::new(&encryption_key.into(), &counter.into());
     cipher.apply_keystream(&mut plaintext);
@@ -247,11 +249,12 @@ pub fn unseal_k1(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
     /// Helper function to generate a 4096-bit RSA keypair for testing.
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn generate_test_keypair() -> PaserkResult<(rsa::RsaPrivateKey, rsa::RsaPublicKey)> {
         use rsa::RsaPrivateKey;
 
@@ -265,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_seal_unseal_roundtrip() -> PaserkResult<()> {
         let (private_key, public_key) = generate_test_keypair()?;
 
@@ -283,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_seal_produces_different_output() -> PaserkResult<()> {
         let (_, public_key) = generate_test_keypair()?;
 
@@ -301,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_unseal_wrong_key() -> PaserkResult<()> {
         let (_, public_key1) = generate_test_keypair()?;
         let (private_key2, _) = generate_test_keypair()?;
@@ -319,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_unseal_modified_tag() -> PaserkResult<()> {
         let (private_key, public_key) = generate_test_keypair()?;
 
@@ -337,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_rsa_ciphertext_size() -> PaserkResult<()> {
         let (_, public_key) = generate_test_keypair()?;
 
@@ -352,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_reject_wrong_key_size() -> PaserkResult<()> {
         use rsa::RsaPrivateKey;
 

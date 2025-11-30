@@ -1,7 +1,7 @@
 //! PIE (Platform-Independent Encryption) protocol implementation.
 //!
 //! This module implements the PIE key wrapping protocol for PASERK.
-//! - For K2/K4: Uses XChaCha20 + BLAKE2b
+//! - For K2/K4: Uses `XChaCha20` + `BLAKE2b`
 //! - For K1/K3: Uses AES-256-CTR + HMAC-SHA384
 
 use crate::core::error::{PaserkError, PaserkResult};
@@ -44,6 +44,10 @@ pub fn pie_wrap_local_k2k4(
     use chacha20::XChaCha20;
     use rand_core::{OsRng, TryRngCore};
 
+    // Type aliases for BLAKE2b variants
+    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Generate random nonce
     let mut nonce = [0u8; PIE_NONCE_SIZE];
     OsRng
@@ -53,7 +57,6 @@ pub fn pie_wrap_local_k2k4(
     // Derive encryption key and XChaCha20 nonce
     // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
     // Ek = x[0:32], n2 = x[32:56]
-    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
@@ -68,12 +71,11 @@ pub fn pie_wrap_local_k2k4(
 
     // Derive authentication key
     // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, &nonce);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
+    let mut auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Encrypt the plaintext key
     // c = XChaCha20(key=Ek, nonce=n2, plaintext=ptk)
@@ -89,6 +91,11 @@ pub fn pie_wrap_local_k2k4(
     <Blake2bMac32 as Update>::update(&mut tag_mac, &nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &ciphertext);
     let tag: [u8; PIE_TAG_SIZE] = <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
+
+    // Zeroize sensitive key material
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut xchacha_nonce);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((nonce, ciphertext, tag))
 }
@@ -120,9 +127,12 @@ pub fn pie_unwrap_local_k2k4(
     use chacha20::XChaCha20;
     use subtle::ConstantTimeEq;
 
+    // Type aliases for BLAKE2b variants
+    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Derive encryption key and XChaCha20 nonce
     // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
-    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
@@ -137,12 +147,11 @@ pub fn pie_unwrap_local_k2k4(
 
     // Derive authentication key
     // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, nonce);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
+    let mut auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Verify authentication tag
     // t2 = BLAKE2b-MAC(key=Ak, msg=header || nonce || ciphertext, len=32)
@@ -161,8 +170,18 @@ pub fn pie_unwrap_local_k2k4(
         let mut cipher = XChaCha20::new(&encryption_key.into(), &xchacha_nonce.into());
         cipher.apply_keystream(&mut plaintext);
 
+        // Zeroize sensitive key material
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut xchacha_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize sensitive key material even on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut xchacha_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Err(PaserkError::AuthenticationFailed)
     }
 }
@@ -193,6 +212,10 @@ pub fn pie_wrap_secret_k2k4(
     use chacha20::XChaCha20;
     use rand_core::{OsRng, TryRngCore};
 
+    // Type aliases for BLAKE2b variants
+    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Generate random nonce
     let mut nonce = [0u8; PIE_NONCE_SIZE];
     OsRng
@@ -201,7 +224,6 @@ pub fn pie_wrap_secret_k2k4(
 
     // Derive encryption key and XChaCha20 nonce
     // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
-    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
@@ -216,12 +238,11 @@ pub fn pie_wrap_secret_k2k4(
 
     // Derive authentication key
     // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, &nonce);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
+    let mut auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Encrypt the plaintext key
     let mut ciphertext = *plaintext_key;
@@ -236,6 +257,11 @@ pub fn pie_wrap_secret_k2k4(
     <Blake2bMac32 as Update>::update(&mut tag_mac, &nonce);
     <Blake2bMac32 as Update>::update(&mut tag_mac, &ciphertext);
     let tag: [u8; PIE_TAG_SIZE] = <Blake2bMac32 as FixedOutput>::finalize_fixed(tag_mac).into();
+
+    // Zeroize sensitive key material
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut xchacha_nonce);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((nonce, ciphertext, tag))
 }
@@ -267,9 +293,12 @@ pub fn pie_unwrap_secret_k2k4(
     use chacha20::XChaCha20;
     use subtle::ConstantTimeEq;
 
+    // Type aliases for BLAKE2b variants
+    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
+    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
+
     // Derive encryption key and XChaCha20 nonce
     // x = BLAKE2b-MAC(key=wrapping_key, msg=0x80 || nonce, len=56)
-    type Blake2bMac56 = Blake2bMac<blake2::digest::consts::U56>;
     let mut kdf_mac = <Blake2bMac56 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac56 as Update>::update(&mut kdf_mac, &[PIE_ENCRYPTION_KEY_DOMAIN]);
@@ -284,12 +313,11 @@ pub fn pie_unwrap_secret_k2k4(
 
     // Derive authentication key
     // Ak = BLAKE2b-MAC(key=wrapping_key, msg=0x81 || nonce, len=32)
-    type Blake2bMac32 = Blake2bMac<blake2::digest::consts::U32>;
     let mut auth_mac = <Blake2bMac32 as KeyInit>::new_from_slice(wrapping_key)
         .map_err(|_| PaserkError::CryptoError)?;
     <Blake2bMac32 as Update>::update(&mut auth_mac, &[PIE_AUTH_KEY_DOMAIN]);
     <Blake2bMac32 as Update>::update(&mut auth_mac, nonce);
-    let auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
+    let mut auth_key: [u8; 32] = <Blake2bMac32 as FixedOutput>::finalize_fixed(auth_mac).into();
 
     // Verify authentication tag
     // t2 = BLAKE2b-MAC(key=Ak, msg=header || nonce || ciphertext, len=32)
@@ -308,8 +336,18 @@ pub fn pie_unwrap_secret_k2k4(
         let mut cipher = XChaCha20::new(&encryption_key.into(), &xchacha_nonce.into());
         cipher.apply_keystream(&mut plaintext);
 
+        // Zeroize sensitive key material
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut xchacha_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize sensitive key material even on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut xchacha_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Err(PaserkError::AuthenticationFailed)
     }
 }
@@ -319,19 +357,19 @@ pub fn pie_unwrap_secret_k2k4(
 // =============================================================================
 
 /// Nonce size for K1/K3 PIE protocol (32 bytes).
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub const PIE_K1K3_NONCE_SIZE: usize = 32;
 
 /// Tag size for K1/K3 PIE protocol (48 bytes - HMAC-SHA384).
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub const PIE_K1K3_TAG_SIZE: usize = 48;
 
 /// Domain separation byte for K1/K3 PIE encryption key derivation (0x80).
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 const PIE_K1K3_ENCRYPTION_KEY_DOMAIN: u8 = 0x80;
 
 /// Domain separation byte for K1/K3 PIE authentication key derivation (0x81).
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 const PIE_K1K3_AUTH_KEY_DOMAIN: u8 = 0x81;
 
 /// Derives encryption and authentication keys for K1/K3 PIE using HMAC-SHA384.
@@ -343,11 +381,11 @@ const PIE_K1K3_AUTH_KEY_DOMAIN: u8 = 0x81;
 ///
 /// # Returns
 ///
-/// A tuple of (encryption_key, aes_nonce, auth_key) where:
-/// - encryption_key is 32 bytes
-/// - aes_nonce is 16 bytes
-/// - auth_key is 48 bytes (full HMAC-SHA384 output)
-#[cfg(any(feature = "k1", feature = "k3"))]
+/// A tuple of (`encryption_key`, `aes_nonce`, `auth_key`) where:
+/// - `encryption_key` is 32 bytes
+/// - `aes_nonce` is 16 bytes
+/// - `auth_key` is 48 bytes (full HMAC-SHA384 output)
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 fn derive_pie_keys_k1k3(
     wrapping_key: &[u8; 32],
     nonce: &[u8; PIE_K1K3_NONCE_SIZE],
@@ -381,7 +419,7 @@ fn derive_pie_keys_k1k3(
 }
 
 /// Computes the authentication tag for K1/K3 PIE using HMAC-SHA384.
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 fn compute_pie_tag_k1k3(
     auth_key: &[u8; 48],
     header: &str,
@@ -400,7 +438,7 @@ fn compute_pie_tag_k1k3(
 }
 
 /// Encrypts/decrypts data using AES-256-CTR for PIE.
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 fn aes_ctr_apply(key: &[u8; 32], nonce: &[u8; 16], data: &mut [u8]) {
     use aes::cipher::{KeyIvInit, StreamCipher};
     use ctr::Ctr128BE;
@@ -424,7 +462,7 @@ fn aes_ctr_apply(key: &[u8; 32], nonce: &[u8; 16], data: &mut [u8]) {
 /// - nonce is 32 bytes
 /// - ciphertext is 32 bytes
 /// - tag is 48 bytes (HMAC-SHA384)
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub fn pie_wrap_local_k1k3(
     wrapping_key: &[u8; 32],
     plaintext_key: &[u8; 32],
@@ -439,7 +477,7 @@ pub fn pie_wrap_local_k1k3(
         .map_err(|_| PaserkError::CryptoError)?;
 
     // Derive keys
-    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, &nonce)?;
+    let (mut encryption_key, mut aes_nonce, mut auth_key) = derive_pie_keys_k1k3(wrapping_key, &nonce)?;
 
     // Encrypt the plaintext key
     let mut ciphertext = *plaintext_key;
@@ -447,6 +485,11 @@ pub fn pie_wrap_local_k1k3(
 
     // Compute authentication tag
     let tag = compute_pie_tag_k1k3(&auth_key, header, &nonce, &ciphertext)?;
+
+    // Zeroize sensitive key material
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut aes_nonce);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((nonce, ciphertext, tag))
 }
@@ -464,7 +507,7 @@ pub fn pie_wrap_local_k1k3(
 /// # Returns
 ///
 /// The unwrapped 32-byte plaintext key.
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub fn pie_unwrap_local_k1k3(
     wrapping_key: &[u8; 32],
     nonce: &[u8; PIE_K1K3_NONCE_SIZE],
@@ -475,7 +518,7 @@ pub fn pie_unwrap_local_k1k3(
     use subtle::ConstantTimeEq;
 
     // Derive keys
-    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, nonce)?;
+    let (mut encryption_key, mut aes_nonce, mut auth_key) = derive_pie_keys_k1k3(wrapping_key, nonce)?;
 
     // Verify authentication tag
     let computed_tag = compute_pie_tag_k1k3(&auth_key, header, nonce, ciphertext)?;
@@ -485,8 +528,19 @@ pub fn pie_unwrap_local_k1k3(
         // Decrypt the ciphertext
         let mut plaintext = *ciphertext;
         aes_ctr_apply(&encryption_key, &aes_nonce, &mut plaintext);
+
+        // Zeroize sensitive key material
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut aes_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize sensitive key material even on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut aes_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Err(PaserkError::AuthenticationFailed)
     }
 }
@@ -520,7 +574,7 @@ pub fn pie_wrap_secret_k3(
         .map_err(|_| PaserkError::CryptoError)?;
 
     // Derive keys
-    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, &nonce)?;
+    let (mut encryption_key, mut aes_nonce, mut auth_key) = derive_pie_keys_k1k3(wrapping_key, &nonce)?;
 
     // Encrypt the plaintext key
     let mut ciphertext = *plaintext_key;
@@ -528,6 +582,11 @@ pub fn pie_wrap_secret_k3(
 
     // Compute authentication tag
     let tag = compute_pie_tag_k1k3(&auth_key, header, &nonce, &ciphertext)?;
+
+    // Zeroize sensitive key material
+    zeroize::Zeroize::zeroize(&mut encryption_key);
+    zeroize::Zeroize::zeroize(&mut aes_nonce);
+    zeroize::Zeroize::zeroize(&mut auth_key);
 
     Ok((nonce, ciphertext, tag))
 }
@@ -556,7 +615,7 @@ pub fn pie_unwrap_secret_k3(
     use subtle::ConstantTimeEq;
 
     // Derive keys
-    let (encryption_key, aes_nonce, auth_key) = derive_pie_keys_k1k3(wrapping_key, nonce)?;
+    let (mut encryption_key, mut aes_nonce, mut auth_key) = derive_pie_keys_k1k3(wrapping_key, nonce)?;
 
     // Verify authentication tag
     let computed_tag = compute_pie_tag_k1k3(&auth_key, header, nonce, ciphertext)?;
@@ -566,13 +625,25 @@ pub fn pie_unwrap_secret_k3(
         // Decrypt the ciphertext
         let mut plaintext = *ciphertext;
         aes_ctr_apply(&encryption_key, &aes_nonce, &mut plaintext);
+
+        // Zeroize sensitive key material
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut aes_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Ok(plaintext)
     } else {
+        // Zeroize sensitive key material even on error path
+        zeroize::Zeroize::zeroize(&mut encryption_key);
+        zeroize::Zeroize::zeroize(&mut aes_nonce);
+        zeroize::Zeroize::zeroize(&mut auth_key);
+
         Err(PaserkError::AuthenticationFailed)
     }
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -734,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "k1")]
+    #[cfg(feature = "k1-insecure")]
     fn test_pie_wrap_unwrap_local_k1_roundtrip() -> PaserkResult<()> {
         let wrapping_key = [0x42u8; 32];
         let plaintext_key = [0x13u8; 32];

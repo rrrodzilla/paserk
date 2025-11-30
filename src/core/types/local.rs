@@ -1,4 +1,4 @@
-//! PaserkLocal - Symmetric key serialization.
+//! `PaserkLocal` - Symmetric key serialization.
 //!
 //! This module provides the `PaserkLocal` type for serializing symmetric
 //! (local) keys in PASERK format.

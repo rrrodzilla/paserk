@@ -17,10 +17,10 @@ pub const K3_SEAL_CIPHERTEXT_SIZE: usize = 32;
 /// Size of the authentication tag (HMAC-SHA384 = 48 bytes).
 pub const K3_SEAL_TAG_SIZE: usize = 48;
 
-/// Total size of sealed data: ephemeral_pk || ciphertext || tag.
+/// Total size of sealed data: `ephemeral_pk` || ciphertext || tag.
 pub const K3_SEAL_DATA_SIZE: usize = K3_EPHEMERAL_PK_SIZE + K3_SEAL_CIPHERTEXT_SIZE + K3_SEAL_TAG_SIZE;
 
-/// Output type for seal operation: (ephemeral_pk, ciphertext, tag).
+/// Output type for seal operation: (`ephemeral_pk`, ciphertext, tag).
 pub(crate) type K3SealOutput = ([u8; K3_EPHEMERAL_PK_SIZE], [u8; K3_SEAL_CIPHERTEXT_SIZE], [u8; K3_SEAL_TAG_SIZE]);
 
 /// Domain separation for seal encryption key derivation.
@@ -43,7 +43,7 @@ const SEAL_AK_DOMAIN: &[u8] = b"paserk.seal.k3.auth";
 ///
 /// # Returns
 ///
-/// A tuple of (ephemeral_public_key, ciphertext, tag).
+/// A tuple of (`ephemeral_public_key`, ciphertext, tag).
 #[cfg(feature = "k3")]
 pub fn seal_k3(
     plaintext_key: &[u8; 32],
@@ -58,6 +58,10 @@ pub fn seal_k3(
     use p384::elliptic_curve::sec1::ToEncodedPoint;
     use p384::{EncodedPoint, PublicKey};
     use sha2::Sha384;
+
+    // Type aliases for cipher types
+    type HmacSha384 = Hmac<Sha384>;
+    type Aes256Ctr = Ctr64BE<aes::Aes256>;
 
     // Parse recipient's public key from SEC1 compressed format
     let recipient_point = EncodedPoint::from_bytes(recipient_pk)
@@ -80,8 +84,6 @@ pub fn seal_k3(
     let shared_bytes = shared_secret.raw_secret_bytes();
 
     // Derive encryption key: Ek = HMAC-SHA384(domain, shared_secret || ephemeral_pk || recipient_pk)
-    type HmacSha384 = Hmac<Sha384>;
-
     let mut ek_mac = <HmacSha384 as Mac>::new_from_slice(SEAL_EK_DOMAIN)
         .map_err(|_| PaserkError::CryptoError)?;
     ek_mac.update(shared_bytes);
@@ -104,7 +106,6 @@ pub fn seal_k3(
     auth_key.copy_from_slice(&ak_result[..48]);
 
     // Encrypt the plaintext key with AES-256-CTR (using zeros as nonce since Ek is unique per seal)
-    type Aes256Ctr = Ctr64BE<aes::Aes256>;
     let nonce = [0u8; 16];
     let mut ciphertext = *plaintext_key;
     let mut cipher = Aes256Ctr::new(&encryption_key.into(), &nonce.into());
@@ -157,15 +158,19 @@ pub fn unseal_k3(
     use sha2::Sha384;
     use subtle::ConstantTimeEq;
 
+    // Type aliases for cipher types
+    type HmacSha384 = Hmac<Sha384>;
+    type Aes256Ctr = Ctr64BE<aes::Aes256>;
+
     // Parse recipient's secret key
     let recipient_secret = SecretKey::from_slice(recipient_sk)
         .map_err(|_| PaserkError::InvalidKey)?;
 
-    // Compute recipient's public key for derivation
+    // Compute recipient's P-384 public key for derivation
     let recipient_public = recipient_secret.public_key();
     let recipient_point = recipient_public.to_encoded_point(true);
-    let mut recipient_pk = [0u8; K3_EPHEMERAL_PK_SIZE];
-    recipient_pk.copy_from_slice(recipient_point.as_bytes());
+    let mut p384_recipient_pk = [0u8; K3_EPHEMERAL_PK_SIZE];
+    p384_recipient_pk.copy_from_slice(recipient_point.as_bytes());
 
     // Parse ephemeral public key
     let ephemeral_point = EncodedPoint::from_bytes(ephemeral_pk)
@@ -181,13 +186,11 @@ pub fn unseal_k3(
     let shared_bytes = shared_secret.raw_secret_bytes();
 
     // Derive encryption key
-    type HmacSha384 = Hmac<Sha384>;
-
     let mut ek_mac = <HmacSha384 as Mac>::new_from_slice(SEAL_EK_DOMAIN)
         .map_err(|_| PaserkError::CryptoError)?;
     ek_mac.update(shared_bytes);
     ek_mac.update(ephemeral_pk);
-    ek_mac.update(&recipient_pk);
+    ek_mac.update(&p384_recipient_pk);
     let ek_result = ek_mac.finalize().into_bytes();
     let mut encryption_key = [0u8; 32];
     encryption_key.copy_from_slice(&ek_result[..32]);
@@ -197,7 +200,7 @@ pub fn unseal_k3(
         .map_err(|_| PaserkError::CryptoError)?;
     ak_mac.update(shared_bytes);
     ak_mac.update(ephemeral_pk);
-    ak_mac.update(&recipient_pk);
+    ak_mac.update(&p384_recipient_pk);
     let ak_result = ak_mac.finalize().into_bytes();
     let mut auth_key = [0u8; 48];
     auth_key.copy_from_slice(&ak_result[..48]);
@@ -217,7 +220,6 @@ pub fn unseal_k3(
 
     if tag_valid {
         // Decrypt the ciphertext
-        type Aes256Ctr = Ctr64BE<aes::Aes256>;
         let nonce = [0u8; 16];
         let mut plaintext = *ciphertext;
         let mut cipher = Aes256Ctr::new(&encryption_key.into(), &nonce.into());

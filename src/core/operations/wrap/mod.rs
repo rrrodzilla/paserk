@@ -13,7 +13,7 @@
 //! PIE (Platform-Independent Encryption) is the standard key wrapping
 //! protocol for PASERK. It provides authenticated encryption:
 //!
-//! - For K2/K4: Uses XChaCha20 for encryption and BLAKE2b for authentication (32-byte tag)
+//! - For K2/K4: Uses `XChaCha20` for encryption and `BLAKE2b` for authentication (32-byte tag)
 //! - For K1/K3: Uses AES-256-CTR for encryption and HMAC-SHA384 for authentication (48-byte tag)
 //!
 //! # Example
@@ -51,7 +51,7 @@ pub use pie::{PIE_NONCE_SIZE, PIE_TAG_SIZE};
 pub use protocol::{Pie, WrapProtocol};
 
 // K1/K3 PIE constants and functions (use different tag size - 48 bytes for HMAC-SHA384)
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub use pie::{PIE_K1K3_NONCE_SIZE, PIE_K1K3_TAG_SIZE};
 
 // Re-export internal functions for use by types module
@@ -60,7 +60,7 @@ pub(crate) use pie::{
     pie_unwrap_local_k2k4, pie_unwrap_secret_k2k4, pie_wrap_local_k2k4, pie_wrap_secret_k2k4,
 };
 
-#[cfg(any(feature = "k1", feature = "k3"))]
+#[cfg(any(feature = "k1-insecure", feature = "k3"))]
 pub(crate) use pie::{pie_unwrap_local_k1k3, pie_wrap_local_k1k3};
 
 #[cfg(feature = "k3")]

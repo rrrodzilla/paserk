@@ -1,4 +1,4 @@
-//! PaserkSecret - Secret key serialization.
+//! `PaserkSecret` - Secret key serialization.
 //!
 //! This module provides the `PaserkSecret` type for serializing secret
 //! (signing) keys in PASERK format.

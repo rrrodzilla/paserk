@@ -20,7 +20,7 @@ pub trait WrapProtocol: private::Sealed + Default + Clone + Copy + Send + Sync +
 /// Platform-Independent Encryption (PIE) protocol marker.
 ///
 /// PIE is the standard key wrapping protocol for PASERK.
-/// - For K2/K4: Uses XChaCha20 + BLAKE2b
+/// - For K2/K4: Uses `XChaCha20` + `BLAKE2b`
 /// - For K1/K3: Uses AES-256-CTR + HMAC-SHA384
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pie;

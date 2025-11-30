@@ -9,7 +9,7 @@
 //! # Version Differences
 //!
 //! - K1: Uses RSA-4096 KEM + AES-256-CTR + HMAC-SHA384 (48-byte tags)
-//! - K2/K4: Uses X25519 ECDH + XChaCha20 + BLAKE2b (32-byte tags)
+//! - K2/K4: Uses X25519 ECDH + `XChaCha20` + `BLAKE2b` (32-byte tags)
 //! - K3: Uses P-384 ECDH + AES-256-CTR + HMAC-SHA384 (48-byte tags)
 //!
 //! # Security
@@ -44,7 +44,7 @@
 //! # Ok::<(), paserk::PaserkError>(())
 //! ```
 
-#[cfg(feature = "k1")]
+#[cfg(feature = "k1-insecure")]
 mod seal_k1;
 
 #[cfg(any(feature = "k2", feature = "k4"))]
@@ -54,12 +54,12 @@ mod seal_k2k4;
 mod seal_k3;
 
 // K1 seal exports (RSA-4096 KEM)
-#[cfg(feature = "k1")]
+#[cfg(feature = "k1-insecure")]
 pub use seal_k1::{
     K1_RSA_CIPHERTEXT_SIZE, K1_SEAL_CIPHERTEXT_SIZE, K1_SEAL_DATA_SIZE, K1_SEAL_TAG_SIZE,
 };
 
-#[cfg(feature = "k1")]
+#[cfg(feature = "k1-insecure")]
 pub(crate) use seal_k1::{seal_k1, unseal_k1};
 
 // K2/K4 seal exports (X25519 ECDH)
