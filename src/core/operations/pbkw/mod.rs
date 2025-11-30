@@ -17,9 +17,15 @@
 //!
 //! Choose parameters based on your security requirements:
 //!
+//! ## K2/K4 (Argon2id)
 //! - **Interactive**: Fast enough for user logins (64 MiB, 2 iterations)
 //! - **Moderate**: Balanced for most applications (256 MiB, 3 iterations)
 //! - **Sensitive**: High security for long-term storage (1 GiB, 4 iterations)
+//!
+//! ## K1/K3 (PBKDF2-SHA384)
+//! - **Interactive**: 100,000 iterations
+//! - **Moderate**: 310,000 iterations (OWASP 2023 recommendation)
+//! - **Sensitive**: 600,000 iterations
 //!
 //! # Example
 //!
@@ -51,12 +57,24 @@
 #[cfg(any(feature = "k2", feature = "k4"))]
 mod argon2_impl;
 
+#[cfg(any(feature = "k1", feature = "k3"))]
+mod pbkdf2_impl;
+
 #[cfg(any(feature = "k2", feature = "k4"))]
-pub use argon2_impl::{
-    Argon2Params, ARGON2_SALT_SIZE, PBKW_TAG_SIZE, XCHACHA20_NONCE_SIZE,
-};
+pub use argon2_impl::{Argon2Params, ARGON2_SALT_SIZE, PBKW_TAG_SIZE, XCHACHA20_NONCE_SIZE};
 
 #[cfg(any(feature = "k2", feature = "k4"))]
 pub(crate) use argon2_impl::{
     pbkw_unwrap_local_k2k4, pbkw_unwrap_secret_k2k4, pbkw_wrap_local_k2k4, pbkw_wrap_secret_k2k4,
 };
+
+#[cfg(any(feature = "k1", feature = "k3"))]
+pub use pbkdf2_impl::{
+    Pbkdf2Params, AES_CTR_NONCE_SIZE, PBKDF2_SALT_SIZE, PBKW_K1K3_TAG_SIZE,
+};
+
+#[cfg(any(feature = "k1", feature = "k3"))]
+pub(crate) use pbkdf2_impl::{pbkw_unwrap_local_k1k3, pbkw_wrap_local_k1k3};
+
+#[cfg(feature = "k3")]
+pub(crate) use pbkdf2_impl::{pbkw_unwrap_secret_k3, pbkw_wrap_secret_k3};
