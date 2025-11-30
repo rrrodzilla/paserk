@@ -39,10 +39,9 @@
 //! | `secret-wrap` | `k{v}.secret-wrap.pie.{data}` | PIE-wrapped secret key | N/A¹ | ✅ | ✅ | ✅ |
 //! | `local-pw` | `k{v}.local-pw.{data}` | Password-wrapped symmetric key | ✅ | ✅ | ✅ | ✅ |
 //! | `secret-pw` | `k{v}.secret-pw.{data}` | Password-wrapped secret key | N/A¹ | ✅ | ✅ | ✅ |
-//! | `seal` | `k{v}.seal.{data}` | PKE-encrypted symmetric key | ⏳² | ✅ | ✅ | ✅ |
+//! | `seal` | `k{v}.seal.{data}` | PKE-encrypted symmetric key | ✅ | ✅ | ✅ | ✅ |
 //!
 //! ¹ K1 uses RSA which has no separate secret key type in PASETO V1.
-//! ² K1 seal (RSA-KEM) not yet implemented.
 //!
 //! # Versions
 //!
@@ -50,7 +49,7 @@
 //!
 //! | Version | Algorithms | Status |
 //! |---------|------------|--------|
-//! | **K1** | RSA + AES-CTR + HMAC-SHA384 | ✅ (except seal) |
+//! | **K1** | RSA + AES-CTR + HMAC-SHA384 | ✅ Fully implemented |
 //! | **K2** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented |
 //! | **K3** | P-384 + AES-CTR + HMAC-SHA384 | ✅ Fully implemented |
 //! | **K4** | Ed25519 + XChaCha20 + BLAKE2b | ✅ Fully implemented (Recommended) |
@@ -86,9 +85,9 @@
 //!
 //! | Version | Key Exchange | Encryption | Authentication |
 //! |---------|--------------|------------|----------------|
+//! | K1 | RSA-4096 KEM | AES-256-CTR | HMAC-SHA384 |
 //! | K2/K4 | X25519 ECDH | XChaCha20 | BLAKE2b |
 //! | K3 | P-384 ECDH | AES-256-CTR | HMAC-SHA384 |
-//! | K1 | RSA-KEM | Not implemented | - |
 //!
 //! # Security
 //!

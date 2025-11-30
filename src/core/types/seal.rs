@@ -3,10 +3,13 @@
 //! This module provides the `PaserkSeal` type for storing symmetric keys
 //! that have been encrypted with a recipient's public key using PKE.
 //!
-//! Format: `k{version}.seal.{base64url(ephemeral_pk || ciphertext || tag)}`
+//! Format varies by version:
+//! - K1: `k1.seal.{base64url(tag || edk || c)}`
+//! - K2/K3/K4: `k{version}.seal.{base64url(ephemeral_pk || ciphertext || tag)}`
 //!
 //! # Version Differences
 //!
+//! - K1: Uses RSA-4096 KEM + AES-256-CTR + HMAC-SHA384 (512-byte RSA ciphertext, 48-byte tag)
 //! - K2/K4: Uses X25519 (32-byte ephemeral key) + BLAKE2b (32-byte tag)
 //! - K3: Uses P-384 (49-byte compressed ephemeral key) + HMAC-SHA384 (48-byte tag)
 
@@ -18,12 +21,17 @@ use base64::prelude::*;
 use crate::core::error::{PaserkError, PaserkResult};
 use crate::core::version::PaserkVersion;
 
+#[cfg(any(feature = "k1", feature = "k2", feature = "k3", feature = "k4"))]
+use crate::core::types::PaserkLocal;
+
 #[cfg(any(feature = "k2", feature = "k3", feature = "k4"))]
-use crate::core::types::{PaserkLocal, PaserkSecret};
+use crate::core::types::PaserkSecret;
 
 /// A symmetric key encrypted with a public key.
 ///
-/// Format: `k{version}.seal.{base64url(ephemeral_pk || ciphertext || tag)}`
+/// Format varies by version:
+/// - K1: `k1.seal.{base64url(tag || edk || c)}`
+/// - K2/K3/K4: `k{version}.seal.{base64url(ephemeral_pk || ciphertext || tag)}`
 ///
 /// This type represents a symmetric key that has been encrypted using
 /// public key encryption (PKE), allowing only the holder of the
@@ -31,6 +39,7 @@ use crate::core::types::{PaserkLocal, PaserkSecret};
 ///
 /// # Version Differences
 ///
+/// - K1: RSA-4096 KEM + AES-256-CTR + HMAC-SHA384 (512-byte RSA ciphertext, 48-byte tag)
 /// - K2/K4: X25519 ECDH + XChaCha20 + BLAKE2b (32-byte ephemeral, 32-byte tag)
 /// - K3: P-384 ECDH + AES-256-CTR + HMAC-SHA384 (49-byte ephemeral, 48-byte tag)
 ///
@@ -67,11 +76,12 @@ use crate::core::types::{PaserkLocal, PaserkSecret};
 /// ```
 #[derive(Clone)]
 pub struct PaserkSeal<V: PaserkVersion> {
-    /// The ephemeral public key (32 bytes for K2/K4, 49 bytes for K3).
-    ephemeral_pk: Vec<u8>,
-    /// The encrypted key (32 bytes).
+    /// For K2/K3/K4: ephemeral public key (32/49/32 bytes).
+    /// For K1: RSA ciphertext (512 bytes).
+    ephemeral_pk_or_rsa_ct: Vec<u8>,
+    /// The encrypted key (32 bytes for all versions).
     ciphertext: Vec<u8>,
-    /// The authentication tag (32 bytes for K2/K4, 48 bytes for K3).
+    /// The authentication tag (48 bytes for K1/K3, 32 bytes for K2/K4).
     tag: Vec<u8>,
     /// Version marker.
     _version: PhantomData<V>,
@@ -88,19 +98,30 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     }
 
     /// Creates a new `PaserkSeal` from raw components.
-    fn new(ephemeral_pk: Vec<u8>, ciphertext: Vec<u8>, tag: Vec<u8>) -> Self {
+    ///
+    /// For K1: `ephemeral_pk_or_rsa_ct` is the RSA ciphertext.
+    /// For K2/K3/K4: `ephemeral_pk_or_rsa_ct` is the ephemeral public key.
+    fn new(ephemeral_pk_or_rsa_ct: Vec<u8>, ciphertext: Vec<u8>, tag: Vec<u8>) -> Self {
         Self {
-            ephemeral_pk,
+            ephemeral_pk_or_rsa_ct,
             ciphertext,
             tag,
             _version: PhantomData,
         }
     }
 
-    /// Returns a reference to the ephemeral public key bytes.
+    /// Returns a reference to the ephemeral public key bytes (K2/K3/K4)
+    /// or RSA ciphertext bytes (K1).
     #[must_use]
     pub fn ephemeral_pk(&self) -> &[u8] {
-        &self.ephemeral_pk
+        &self.ephemeral_pk_or_rsa_ct
+    }
+
+    /// Returns a reference to the RSA ciphertext bytes (K1 only).
+    /// For other versions, this returns the ephemeral public key.
+    #[must_use]
+    pub fn rsa_ciphertext(&self) -> &[u8] {
+        &self.ephemeral_pk_or_rsa_ct
     }
 
     /// Returns a reference to the ciphertext bytes.
@@ -115,9 +136,10 @@ impl<V: PaserkVersion> PaserkSeal<V> {
         &self.tag
     }
 
-    /// Returns the expected ephemeral public key size for this version.
+    /// Returns the expected ephemeral public key size (K2/K3/K4) or RSA ciphertext size (K1).
     fn expected_ephemeral_pk_size() -> usize {
         match V::VERSION {
+            1 => 512,    // RSA-4096 ciphertext
             2 | 4 => 32, // X25519
             3 => 49,     // P-384 compressed SEC1
             _ => 32,
@@ -127,8 +149,8 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     /// Returns the expected tag size for this version.
     fn expected_tag_size() -> usize {
         match V::VERSION {
+            1 | 3 => 48, // HMAC-SHA384
             2 | 4 => 32, // BLAKE2b
-            3 => 48,     // HMAC-SHA384
             _ => 32,
         }
     }
@@ -136,6 +158,61 @@ impl<V: PaserkVersion> PaserkSeal<V> {
     /// Total serialized data size.
     fn data_size() -> usize {
         Self::expected_ephemeral_pk_size() + 32 + Self::expected_tag_size()
+    }
+}
+
+// =============================================================================
+// Seal/Unseal operations for K1 (RSA-4096 KEM + AES-256-CTR + HMAC-SHA384)
+// =============================================================================
+
+#[cfg(feature = "k1")]
+impl PaserkSeal<crate::core::version::K1> {
+    /// Seals a symmetric key with a recipient's RSA-4096 public key.
+    ///
+    /// The public key must have a 4096-bit modulus and exponent 65537.
+    pub fn try_seal_with_rsa(
+        key: &PaserkLocal<crate::core::version::K1>,
+        recipient_pk: &rsa::RsaPublicKey,
+    ) -> PaserkResult<Self> {
+        use crate::core::operations::pke::seal_k1;
+
+        let header = Self::header();
+        let (tag, edk, c) = seal_k1(key.as_bytes(), recipient_pk, &header)?;
+
+        // For K1, we store: c in ephemeral_pk_or_rsa_ct, edk in ciphertext, tag in tag
+        Ok(Self::new(c.to_vec(), edk.to_vec(), tag.to_vec()))
+    }
+
+    /// Unseals the encrypted key using the recipient's RSA-4096 secret key.
+    ///
+    /// The secret key must have a 4096-bit modulus.
+    pub fn try_unseal_with_rsa(
+        &self,
+        recipient_sk: &rsa::RsaPrivateKey,
+    ) -> PaserkResult<PaserkLocal<crate::core::version::K1>> {
+        use crate::core::operations::pke::{
+            unseal_k1, K1_RSA_CIPHERTEXT_SIZE, K1_SEAL_CIPHERTEXT_SIZE, K1_SEAL_TAG_SIZE,
+        };
+
+        if self.ephemeral_pk_or_rsa_ct.len() != K1_RSA_CIPHERTEXT_SIZE
+            || self.ciphertext.len() != K1_SEAL_CIPHERTEXT_SIZE
+            || self.tag.len() != K1_SEAL_TAG_SIZE
+        {
+            return Err(PaserkError::InvalidKey);
+        }
+
+        let mut c = [0u8; K1_RSA_CIPHERTEXT_SIZE];
+        let mut edk = [0u8; K1_SEAL_CIPHERTEXT_SIZE];
+        let mut tag = [0u8; K1_SEAL_TAG_SIZE];
+
+        c.copy_from_slice(&self.ephemeral_pk_or_rsa_ct);
+        edk.copy_from_slice(&self.ciphertext);
+        tag.copy_from_slice(&self.tag);
+
+        let header = Self::header();
+        let plaintext = unseal_k1(&tag, &edk, &c, recipient_sk, &header)?;
+
+        Ok(PaserkLocal::from(plaintext))
     }
 }
 
@@ -188,14 +265,17 @@ impl PaserkSeal<crate::core::version::K2> {
             .try_into()
             .map_err(|_| PaserkError::InvalidKey)?;
 
-        if self.ephemeral_pk.len() != 32 || self.ciphertext.len() != 32 || self.tag.len() != 32 {
+        if self.ephemeral_pk_or_rsa_ct.len() != 32
+            || self.ciphertext.len() != 32
+            || self.tag.len() != 32
+        {
             return Err(PaserkError::InvalidKey);
         }
 
         let mut ephemeral_pk = [0u8; 32];
         let mut ciphertext = [0u8; 32];
         let mut tag = [0u8; 32];
-        ephemeral_pk.copy_from_slice(&self.ephemeral_pk);
+        ephemeral_pk.copy_from_slice(&self.ephemeral_pk_or_rsa_ct);
         ciphertext.copy_from_slice(&self.ciphertext);
         tag.copy_from_slice(&self.tag);
 
@@ -255,14 +335,17 @@ impl PaserkSeal<crate::core::version::K4> {
             .try_into()
             .map_err(|_| PaserkError::InvalidKey)?;
 
-        if self.ephemeral_pk.len() != 32 || self.ciphertext.len() != 32 || self.tag.len() != 32 {
+        if self.ephemeral_pk_or_rsa_ct.len() != 32
+            || self.ciphertext.len() != 32
+            || self.tag.len() != 32
+        {
             return Err(PaserkError::InvalidKey);
         }
 
         let mut ephemeral_pk = [0u8; 32];
         let mut ciphertext = [0u8; 32];
         let mut tag = [0u8; 32];
-        ephemeral_pk.copy_from_slice(&self.ephemeral_pk);
+        ephemeral_pk.copy_from_slice(&self.ephemeral_pk_or_rsa_ct);
         ciphertext.copy_from_slice(&self.ciphertext);
         tag.copy_from_slice(&self.tag);
 
@@ -331,7 +414,7 @@ impl PaserkSeal<crate::core::version::K3> {
             return Err(PaserkError::InvalidKey);
         }
 
-        if self.ephemeral_pk.len() != K3_EPHEMERAL_PK_SIZE
+        if self.ephemeral_pk_or_rsa_ct.len() != K3_EPHEMERAL_PK_SIZE
             || self.ciphertext.len() != K3_SEAL_CIPHERTEXT_SIZE
             || self.tag.len() != K3_SEAL_TAG_SIZE
         {
@@ -343,7 +426,7 @@ impl PaserkSeal<crate::core::version::K3> {
         let mut tag = [0u8; K3_SEAL_TAG_SIZE];
         let mut secret_key = [0u8; 48];
 
-        ephemeral_pk.copy_from_slice(&self.ephemeral_pk);
+        ephemeral_pk.copy_from_slice(&self.ephemeral_pk_or_rsa_ct);
         ciphertext.copy_from_slice(&self.ciphertext);
         tag.copy_from_slice(&self.tag);
         secret_key.copy_from_slice(secret_bytes);
@@ -361,12 +444,21 @@ impl PaserkSeal<crate::core::version::K3> {
 
 impl<V: PaserkVersion> Display for PaserkSeal<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Concatenate ephemeral_pk || ciphertext || tag
-        let mut data =
-            Vec::with_capacity(self.ephemeral_pk.len() + self.ciphertext.len() + self.tag.len());
-        data.extend_from_slice(&self.ephemeral_pk);
-        data.extend_from_slice(&self.ciphertext);
-        data.extend_from_slice(&self.tag);
+        let mut data = Vec::with_capacity(
+            self.ephemeral_pk_or_rsa_ct.len() + self.ciphertext.len() + self.tag.len(),
+        );
+
+        // K1 format: tag || edk || c
+        // Other versions: ephemeral_pk || ciphertext || tag
+        if V::VERSION == 1 {
+            data.extend_from_slice(&self.tag);
+            data.extend_from_slice(&self.ciphertext);
+            data.extend_from_slice(&self.ephemeral_pk_or_rsa_ct);
+        } else {
+            data.extend_from_slice(&self.ephemeral_pk_or_rsa_ct);
+            data.extend_from_slice(&self.ciphertext);
+            data.extend_from_slice(&self.tag);
+        }
 
         let encoded = BASE64_URL_SAFE_NO_PAD.encode(&data);
         write!(f, "{}{}", Self::header(), encoded)
@@ -429,12 +521,23 @@ impl<V: PaserkVersion> TryFrom<&str> for PaserkSeal<V> {
 
         let ephemeral_pk_size = Self::expected_ephemeral_pk_size();
         let ciphertext_size = 32;
+        let tag_size = Self::expected_tag_size();
 
-        let ephemeral_pk = data[..ephemeral_pk_size].to_vec();
-        let ciphertext = data[ephemeral_pk_size..ephemeral_pk_size + ciphertext_size].to_vec();
-        let tag = data[ephemeral_pk_size + ciphertext_size..].to_vec();
+        // K1 format: tag || edk || c
+        // Other versions: ephemeral_pk || ciphertext || tag
+        let (ephemeral_pk_or_rsa_ct, ciphertext, tag) = if V::VERSION == 1 {
+            let tag = data[..tag_size].to_vec();
+            let ciphertext = data[tag_size..tag_size + ciphertext_size].to_vec();
+            let rsa_ct = data[tag_size + ciphertext_size..].to_vec();
+            (rsa_ct, ciphertext, tag)
+        } else {
+            let ephemeral_pk = data[..ephemeral_pk_size].to_vec();
+            let ciphertext = data[ephemeral_pk_size..ephemeral_pk_size + ciphertext_size].to_vec();
+            let tag = data[ephemeral_pk_size + ciphertext_size..].to_vec();
+            (ephemeral_pk, ciphertext, tag)
+        };
 
-        Ok(Self::new(ephemeral_pk, ciphertext, tag))
+        Ok(Self::new(ephemeral_pk_or_rsa_ct, ciphertext, tag))
     }
 }
 
@@ -453,13 +556,15 @@ impl<V: PaserkVersion> TryFrom<String> for PaserkSeal<V> {
 impl<V: PaserkVersion> PartialEq for PaserkSeal<V> {
     fn eq(&self, other: &Self) -> bool {
         use subtle::ConstantTimeEq;
-        if self.ephemeral_pk.len() != other.ephemeral_pk.len()
+        if self.ephemeral_pk_or_rsa_ct.len() != other.ephemeral_pk_or_rsa_ct.len()
             || self.ciphertext.len() != other.ciphertext.len()
             || self.tag.len() != other.tag.len()
         {
             return false;
         }
-        self.ephemeral_pk.ct_eq(&other.ephemeral_pk).into()
+        self.ephemeral_pk_or_rsa_ct
+            .ct_eq(&other.ephemeral_pk_or_rsa_ct)
+            .into()
             && self.ciphertext.ct_eq(&other.ciphertext).into()
             && self.tag.ct_eq(&other.tag).into()
     }
@@ -683,5 +788,122 @@ mod tests {
         // K3 uses HMAC-SHA384: 48 bytes
         assert_eq!(sealed.tag().len(), 48);
         Ok(())
+    }
+
+    // =========================================================================
+    // K1 Seal Tests (RSA-4096 KEM)
+    // =========================================================================
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_header() {
+        use crate::core::version::K1;
+        assert_eq!(PaserkSeal::<K1>::header(), "k1.seal.");
+    }
+
+    #[cfg(feature = "k1")]
+    fn generate_k1_test_keypair() -> PaserkResult<(rsa::RsaPrivateKey, rsa::RsaPublicKey)> {
+        use rsa::RsaPrivateKey;
+
+        let mut rng = rand::thread_rng();
+        let private_key =
+            RsaPrivateKey::new(&mut rng, 4096).map_err(|_| PaserkError::CryptoError)?;
+        let public_key = private_key.to_public_key();
+
+        Ok((private_key, public_key))
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_seal_unseal_roundtrip() -> PaserkResult<()> {
+        use crate::core::version::K1;
+
+        let (private_key, public_key) = generate_k1_test_keypair()?;
+        let local_key = PaserkLocal::<K1>::from([0x42u8; 32]);
+
+        let sealed = PaserkSeal::<K1>::try_seal_with_rsa(&local_key, &public_key)?;
+
+        let unsealed = sealed.try_unseal_with_rsa(&private_key)?;
+
+        assert_eq!(unsealed.as_bytes(), local_key.as_bytes());
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_serialize_parse_roundtrip() -> PaserkResult<()> {
+        use crate::core::version::K1;
+
+        let (private_key, public_key) = generate_k1_test_keypair()?;
+        let local_key = PaserkLocal::<K1>::from([0x42u8; 32]);
+
+        let sealed = PaserkSeal::<K1>::try_seal_with_rsa(&local_key, &public_key)?;
+
+        let serialized = sealed.to_string();
+        assert!(serialized.starts_with("k1.seal."));
+
+        let parsed = PaserkSeal::<K1>::try_from(serialized.as_str())?;
+
+        assert_eq!(sealed, parsed);
+
+        let unsealed = parsed.try_unseal_with_rsa(&private_key)?;
+
+        assert_eq!(unsealed.as_bytes(), local_key.as_bytes());
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_unseal_wrong_key() -> PaserkResult<()> {
+        use crate::core::version::K1;
+
+        let (_, public_key1) = generate_k1_test_keypair()?;
+        let (private_key2, _) = generate_k1_test_keypair()?;
+
+        let local_key = PaserkLocal::<K1>::from([0x42u8; 32]);
+
+        let sealed = PaserkSeal::<K1>::try_seal_with_rsa(&local_key, &public_key1)?;
+
+        let result = sealed.try_unseal_with_rsa(&private_key2);
+        assert!(matches!(result, Err(PaserkError::AuthenticationFailed)));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_rsa_ciphertext_size() -> PaserkResult<()> {
+        use crate::core::version::K1;
+
+        let (_, public_key) = generate_k1_test_keypair()?;
+        let local_key = PaserkLocal::<K1>::from([0x42u8; 32]);
+
+        let sealed = PaserkSeal::<K1>::try_seal_with_rsa(&local_key, &public_key)?;
+
+        // RSA-4096 = 512 bytes
+        assert_eq!(sealed.rsa_ciphertext().len(), 512);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_tag_size() -> PaserkResult<()> {
+        use crate::core::version::K1;
+
+        let (_, public_key) = generate_k1_test_keypair()?;
+        let local_key = PaserkLocal::<K1>::from([0x42u8; 32]);
+
+        let sealed = PaserkSeal::<K1>::try_seal_with_rsa(&local_key, &public_key)?;
+
+        // HMAC-SHA384 = 48 bytes
+        assert_eq!(sealed.tag().len(), 48);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "k1")]
+    fn test_k1_data_size() {
+        use crate::core::version::K1;
+        // K1: tag (48) + edk (32) + c (512) = 592 bytes
+        assert_eq!(PaserkSeal::<K1>::data_size(), 592);
     }
 }

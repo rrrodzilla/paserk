@@ -25,7 +25,7 @@ features = ["k4", "prelude"]
 default = ["k4"]
 
 # Version features - each enables the cryptographic primitives needed
-k1 = ["sha2", "hmac", "aes", "ctr", "pbkdf2"]
+k1 = ["sha2", "hmac", "aes", "ctr", "pbkdf2", "rsa"]
 k2 = ["blake2", "chacha20", "argon2", "x25519-dalek", "ed25519-dalek"]
 k3 = ["sha2", "hmac", "aes", "ctr", "pbkdf2", "p384"]
 k4 = ["blake2", "chacha20", "argon2", "x25519-dalek", "ed25519-dalek"]
@@ -43,6 +43,7 @@ aes = ["dep:aes"]
 ctr = ["dep:ctr"]
 pbkdf2 = ["dep:pbkdf2"]
 p384 = ["dep:p384"]
+rsa = ["dep:rsa"]
 blake2 = ["dep:blake2"]
 chacha20 = ["dep:chacha20"]
 argon2 = ["dep:argon2"]
@@ -71,10 +72,12 @@ chacha20 = { version = "0.9", optional = true }
 argon2 = { version = "0.5", optional = true }
 x25519-dalek = { version = "2.0", features = ["static_secrets"], optional = true }
 ed25519-dalek = { version = "2.0", features = ["zeroize", "rand_core"], optional = true }
+rsa = { version = "0.9.9", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0"
 hex = "0.4"
+rand = "0.8"
 
 [lints.rust]
 unsafe_code = "forbid"
