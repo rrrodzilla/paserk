@@ -20,7 +20,7 @@ Add `paserk` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-paserk = "0.1"
+paserk = "0.4"
 ```
 
 By default, K4 (the recommended version) and the ergonomic `prelude` are enabled. See [Feature Flags](#feature-flags) for other options.
@@ -155,16 +155,16 @@ Enable specific PASERK versions based on your needs:
 
 ```toml
 # K4 + prelude (default, recommended for new applications)
-paserk = "0.1"
+paserk = "0.4"
 
 # Multiple specific versions
-paserk = { version = "0.1", features = ["k2", "k4"] }
+paserk = { version = "0.4", features = ["k2", "k4"] }
 
 # All versions
-paserk = { version = "0.1", features = ["all-versions"] }
+paserk = { version = "0.4", features = ["all-versions"] }
 
 # Minimal (no prelude, for power users)
-paserk = { version = "0.1", default-features = false, features = ["k4"] }
+paserk = { version = "0.4", default-features = false, features = ["k4"] }
 ```
 
 | Feature | Description | Dependencies Added |
